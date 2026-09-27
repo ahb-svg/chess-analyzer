@@ -21,12 +21,6 @@ const pieceSymbols = {
   },
 };
 
-/*
-========================================
-MOVE CLASSIFICATION
-========================================
-*/
-
 function classifyMove(loss) {
   if (loss >= 2.0) {
     return {
@@ -60,113 +54,48 @@ function classifyMove(loss) {
 }
 
 function App() {
-  /*
-  ========================================
-  GAME
-  ========================================
-  */
+  const [game, setGame] = useState(new Chess());
+  const [selectedSquare, setSelectedSquare] = useState(null);
+  const [lastMove, setLastMove] = useState(null);
+  const [promotion, setPromotion] = useState(null);
 
-  const [game, setGame] = useState(
-    new Chess()
-  );
-
-  const [selectedSquare, setSelectedSquare] =
-    useState(null);
-
-  const [lastMove, setLastMove] =
-    useState(null);
-
-  const [promotion, setPromotion] =
-    useState(null);
-
-  /*
-  ========================================
-  MOVE HISTORY
-  ========================================
-  */
-
-  const [moveHistory, setMoveHistory] =
-    useState([]);
-
-  /*
-  ========================================
-  UNDO / REDO HISTORY
-  ========================================
-  */
+  const [moveHistory, setMoveHistory] = useState([]);
 
   const [history, setHistory] = useState([
     new Chess().fen(),
   ]);
 
-  const [historyIndex, setHistoryIndex] =
-    useState(0);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
-  /*
-  ========================================
-  VIEW NAVIGATION
-  ========================================
+  const [viewIndex, setViewIndex] = useState(0);
 
-  This is separate from Undo/Redo.
-
-  viewIndex tells us which move we are
-  currently LOOKING AT.
-  */
-
-  const [viewIndex, setViewIndex] =
-    useState(0);
-
-  /*
-  ========================================
-  STOCKFISH
-  ========================================
-  */
-
-  const [evaluation, setEvaluation] =
-    useState(0);
-
-  const [engineReady, setEngineReady] =
-    useState(false);
-
-  /*
-  ========================================
-  REFS
-  ========================================
-  */
+  // Stockfish evaluation
+  const [evaluation, setEvaluation] = useState(0);
+  const [engineReady, setEngineReady] = useState(false);
 
   const stockfishRef = useRef(null);
-
   const gameRef = useRef(game);
-
-  const evaluationRef =
-    useRef(evaluation);
-
-  const pendingMoveRef =
-    useRef(null);
-
-  /*
-  ========================================
-  KEEP REFS UPDATED
-  ========================================
-  */
+  const evaluationRef = useRef(evaluation);
+  const pendingMoveRef = useRef(null);
 
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
 
   useEffect(() => {
-    evaluationRef.current =
-      evaluation;
+    evaluationRef.current = evaluation;
   }, [evaluation]);
 
-  /*
-  ========================================
-  STOCKFISH
-  ========================================
-  */
+  // ========================================
+  // STOCKFISH
+  // ========================================
 
   useEffect(() => {
+    // IMPORTANT:
+    // import.meta.env.BASE_URL makes the path work
+    // both locally and on GitHub Pages.
     const worker = new Worker(
-      "/stockfish-19-lite-single.js"
+      `${import.meta.env.BASE_URL}stockfish-19-lite-single.js`
     );
 
     stockfishRef.current = worker;
@@ -178,279 +107,161 @@ function App() {
         return;
       }
 
-      /*
-      ------------------------------------
-      ENGINE READY
-      ------------------------------------
-      */
-
+      // Engine ready
       if (message === "readyok") {
         setEngineReady(true);
         return;
       }
 
-      /*
-      ------------------------------------
-      CENTIPAWN SCORE
-      ------------------------------------
-      */
-
-      const cpMatch =
-        message.match(
-          /score cp (-?\d+)/
-        );
+      // Centipawn score
+      const cpMatch = message.match(/score cp (-?\d+)/);
 
       if (cpMatch) {
-        const centipawns =
-          parseInt(
-            cpMatch[1],
-            10
-          );
+        const centipawns = parseInt(cpMatch[1], 10);
 
-        let score =
-          centipawns / 100;
+        let score = centipawns / 100;
 
-        /*
-        Convert Stockfish score
-        to White perspective.
-        */
-
-        if (
-          gameRef.current.turn() ===
-          "b"
-        ) {
+        // Stockfish score is from side-to-move perspective.
+        // Convert it to White's perspective.
+        if (gameRef.current.turn() === "b") {
           score = -score;
         }
 
         setEvaluation(score);
 
-        /*
-        --------------------------------
-        CLASSIFICATION
-        --------------------------------
-        */
-
-        const pending =
-          pendingMoveRef.current;
+        // Move classification
+        const pending = pendingMoveRef.current;
 
         if (
           pending &&
-          gameRef.current.fen() ===
-            pending.afterFen
+          gameRef.current.fen() === pending.afterFen
         ) {
-          const before =
-            pending.beforeEvaluation;
-
-          const movedColor =
-            pending.color;
+          const before = pending.beforeEvaluation;
+          const movedColor = pending.color;
 
           let loss;
 
           if (movedColor === "w") {
-            loss =
-              before - score;
+            loss = before - score;
           } else {
-            loss =
-              score - before;
+            loss = score - before;
           }
 
-          loss = Math.max(
-            0,
-            loss
-          );
+          loss = Math.max(0, loss);
 
-          const classification =
-            classifyMove(loss);
+          const classification = classifyMove(loss);
 
-          setMoveHistory(
-            (currentHistory) => {
-              if (
-                currentHistory.length ===
-                0
-              ) {
-                return currentHistory;
-              }
-
-              const updated =
-                [...currentHistory];
-
-              const lastIndex =
-                updated.length - 1;
-
-              if (
-                updated[lastIndex].id !==
-                pending.id
-              ) {
-                return currentHistory;
-              }
-
-              updated[lastIndex] = {
-                ...updated[lastIndex],
-
-                evaluationAfter:
-                  score,
-
-                loss,
-
-                classification,
-
-                analyzing: false,
-              };
-
-              return updated;
+          setMoveHistory((currentHistory) => {
+            if (currentHistory.length === 0) {
+              return currentHistory;
             }
-          );
 
-          pendingMoveRef.current =
-            null;
+            const updated = [...currentHistory];
+            const lastIndex = updated.length - 1;
+
+            if (updated[lastIndex].id !== pending.id) {
+              return currentHistory;
+            }
+
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              evaluationAfter: score,
+              loss,
+              classification,
+              analyzing: false,
+            };
+
+            return updated;
+          });
+
+          pendingMoveRef.current = null;
         }
 
         return;
       }
 
-      /*
-      ------------------------------------
-      MATE SCORE
-      ------------------------------------
-      */
-
-      const mateMatch =
-        message.match(
-          /score mate (-?\d+)/
-        );
+      // Mate score
+      const mateMatch = message.match(/score mate (-?\d+)/);
 
       if (mateMatch) {
-        const mateIn =
-          parseInt(
-            mateMatch[1],
-            10
-          );
+        const mateIn = parseInt(mateMatch[1], 10);
 
-        let score;
+        let score = mateIn > 0 ? 10 : -10;
 
-        if (mateIn > 0) {
-          score = 10;
-        } else {
-          score = -10;
-        }
-
-        if (
-          gameRef.current.turn() ===
-          "b"
-        ) {
+        if (gameRef.current.turn() === "b") {
           score = -score;
         }
 
         setEvaluation(score);
 
-        /*
-        Classification after mate
-        */
-
-        const pending =
-          pendingMoveRef.current;
+        const pending = pendingMoveRef.current;
 
         if (
           pending &&
-          gameRef.current.fen() ===
-            pending.afterFen
+          gameRef.current.fen() === pending.afterFen
         ) {
-          const before =
-            pending.beforeEvaluation;
-
-          const movedColor =
-            pending.color;
+          const before = pending.beforeEvaluation;
+          const movedColor = pending.color;
 
           let loss;
 
           if (movedColor === "w") {
-            loss =
-              before - score;
+            loss = before - score;
           } else {
-            loss =
-              score - before;
+            loss = score - before;
           }
 
-          loss = Math.max(
-            0,
-            loss
-          );
+          loss = Math.max(0, loss);
 
-          const classification =
-            classifyMove(loss);
+          const classification = classifyMove(loss);
 
-          setMoveHistory(
-            (currentHistory) => {
-              if (
-                currentHistory.length ===
-                0
-              ) {
-                return currentHistory;
-              }
-
-              const updated =
-                [...currentHistory];
-
-              const lastIndex =
-                updated.length - 1;
-
-              if (
-                updated[lastIndex].id !==
-                pending.id
-              ) {
-                return currentHistory;
-              }
-
-              updated[lastIndex] = {
-                ...updated[lastIndex],
-
-                evaluationAfter:
-                  score,
-
-                loss,
-
-                classification,
-
-                analyzing: false,
-              };
-
-              return updated;
+          setMoveHistory((currentHistory) => {
+            if (currentHistory.length === 0) {
+              return currentHistory;
             }
-          );
 
-          pendingMoveRef.current =
-            null;
+            const updated = [...currentHistory];
+            const lastIndex = updated.length - 1;
+
+            if (updated[lastIndex].id !== pending.id) {
+              return currentHistory;
+            }
+
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              evaluationAfter: score,
+              loss,
+              classification,
+              analyzing: false,
+            };
+
+            return updated;
+          });
+
+          pendingMoveRef.current = null;
         }
       }
     };
 
     worker.postMessage("uci");
-
-    worker.postMessage(
-      "isready"
-    );
+    worker.postMessage("isready");
 
     return () => {
       worker.terminate();
-
-      stockfishRef.current =
-        null;
+      stockfishRef.current = null;
     };
   }, []);
 
-  /*
-  ========================================
-  ANALYZE CURRENT POSITION
-  ========================================
-  */
+  // ========================================
+  // ANALYZE CURRENT POSITION
+  // ========================================
 
   useEffect(() => {
     if (!engineReady) {
       return;
     }
 
-    const worker =
-      stockfishRef.current;
+    const worker = stockfishRef.current;
 
     if (!worker) {
       return;
@@ -462,126 +273,69 @@ function App() {
       `position fen ${game.fen()}`
     );
 
-    worker.postMessage(
-      "go depth 12"
-    );
-  }, [
-    game,
-    engineReady,
-  ]);
+    worker.postMessage("go depth 12");
+  }, [game, engineReady]);
 
-  /*
-  ========================================
-  BOARD
-  ========================================
-  */
+  // ========================================
+  // BOARD
+  // ========================================
 
   const board = game.board();
 
-  function squareName(
-    row,
-    col
-  ) {
-    const files =
-      "abcdefgh";
-
+  function squareName(row, col) {
+    const files = "abcdefgh";
     return `${files[col]}${8 - row}`;
   }
 
-  /*
-  ========================================
-  LEGAL MOVE
-  ========================================
-  */
+  // ========================================
+  // LEGAL MOVES
+  // ========================================
 
-  function isLegalMove(
-    square
-  ) {
+  function isLegalMove(square) {
     if (!selectedSquare) {
       return false;
     }
 
-    const moves =
-      game.moves({
-        square:
-          selectedSquare,
-        verbose: true,
-      });
+    const moves = game.moves({
+      square: selectedSquare,
+      verbose: true,
+    });
 
-    return moves.some(
-      (move) =>
-        move.to === square
-    );
+    return moves.some((move) => move.to === square);
   }
 
-  /*
-  ========================================
-  SAVE POSITION
-  ========================================
-  */
+  // ========================================
+  // SAVE POSITION
+  // ========================================
 
-  function savePosition(
-    newGame
-  ) {
-    const newHistory =
-      history.slice(
-        0,
-        historyIndex + 1
-      );
-
-    newHistory.push(
-      newGame.fen()
+  function savePosition(newGame) {
+    const newHistory = history.slice(
+      0,
+      historyIndex + 1
     );
 
-    setHistory(
-      newHistory
-    );
+    newHistory.push(newGame.fen());
 
-    setHistoryIndex(
-      newHistory.length - 1
-    );
-
-    /*
-    New move becomes the
-    latest view.
-    */
-
-    setViewIndex(
-      newHistory.length - 1
-    );
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setViewIndex(newHistory.length - 1);
   }
 
-  /*
-  ========================================
-  MAKE MOVE
-  ========================================
-  */
+  // ========================================
+  // MAKE MOVE
+  // ========================================
 
   function makeMove(
     from,
     to,
     promotionPiece = null
   ) {
-    /*
-    Only allow editing when we are
-    at the latest position.
-
-    This prevents accidentally
-    creating a new variation while
-    viewing an older move.
-    */
-
-    if (
-      viewIndex !==
-      history.length - 1
-    ) {
+    // Do not edit an old position.
+    if (viewIndex !== history.length - 1) {
       return;
     }
 
-    const newGame =
-      new Chess(
-        game.fen()
-      );
+    const newGame = new Chess(game.fen());
 
     const moveData = {
       from,
@@ -589,219 +343,99 @@ function App() {
     };
 
     if (promotionPiece) {
-      moveData.promotion =
-        promotionPiece;
+      moveData.promotion = promotionPiece;
     }
 
     try {
-      const move =
-        newGame.move(
-          moveData
-        );
+      const move = newGame.move(moveData);
 
       if (!move) {
         return;
       }
 
-      /*
-      ====================================
-      BEFORE EVALUATION
-      ====================================
-      */
-
       const beforeEvaluation =
         evaluationRef.current;
 
-      /*
-      ====================================
-      UNIQUE MOVE ID
-      ====================================
-      */
-
       const moveId =
-        Date.now() +
-        Math.random();
-
-      /*
-      ====================================
-      PENDING MOVE
-      ====================================
-      */
+        Date.now() + Math.random();
 
       pendingMoveRef.current = {
         id: moveId,
-
         beforeEvaluation,
-
-        color:
-          game.turn(),
-
-        afterFen:
-          newGame.fen(),
+        color: game.turn(),
+        afterFen: newGame.fen(),
       };
 
-      /*
-      ====================================
-      SAVE POSITION
-      ====================================
-      */
-
-      savePosition(
-        newGame
-      );
-
-      /*
-      ====================================
-      LAST MOVE
-      ====================================
-      */
+      savePosition(newGame);
 
       setLastMove({
         from,
         to,
       });
 
-      /*
-      ====================================
-      MOVE HISTORY
-      ====================================
-      */
+      setMoveHistory((previousHistory) => [
+        ...previousHistory,
+        {
+          id: moveId,
+          number: previousHistory.length + 1,
+          color: game.turn(),
+          notation: move.san,
+          evaluationBefore: beforeEvaluation,
+          evaluationAfter: null,
+          loss: null,
+          classification: null,
+          analyzing: true,
+        },
+      ]);
 
-      setMoveHistory(
-        (previousHistory) => [
-          ...previousHistory,
-
-          {
-            id: moveId,
-
-            number:
-              previousHistory.length +
-              1,
-
-            color:
-              game.turn(),
-
-            notation:
-              move.san,
-
-            evaluationBefore:
-              beforeEvaluation,
-
-            evaluationAfter:
-              null,
-
-            loss:
-              null,
-
-            classification:
-              null,
-
-            analyzing:
-              true,
-          },
-        ]
-      );
-
-      /*
-      ====================================
-      UPDATE GAME
-      ====================================
-      */
-
-      setGame(
-        newGame
-      );
-
-      setSelectedSquare(
-        null
-      );
-
-      setPromotion(
-        null
-      );
+      setGame(newGame);
+      setSelectedSquare(null);
+      setPromotion(null);
     } catch {
       // Invalid move
     }
   }
 
-  /*
-  ========================================
-  CLICK BOARD
-  ========================================
-  */
+  // ========================================
+  // BOARD CLICK
+  // ========================================
 
-  function handleSquareClick(
-    row,
-    col
-  ) {
-    /*
-    Don't allow moves while
-    looking at an older move.
-    */
-
-    if (
-      viewIndex !==
-      history.length - 1
-    ) {
+  function handleSquareClick(row, col) {
+    // Don't edit old positions.
+    if (viewIndex !== history.length - 1) {
       return;
     }
 
-    const clickedSquare =
-      squareName(
-        row,
-        col
-      );
-
-    const piece =
-      board[row][col];
+    const clickedSquare = squareName(row, col);
+    const piece = board[row][col];
 
     if (selectedSquare) {
       try {
-        const moves =
-          game.moves({
-            square:
-              selectedSquare,
-            verbose: true,
-          });
+        const moves = game.moves({
+          square: selectedSquare,
+          verbose: true,
+        });
 
-        const selectedMove =
-          moves.find(
-            (move) =>
-              move.to ===
-              clickedSquare
-          );
+        const selectedMove = moves.find(
+          (move) => move.to === clickedSquare
+        );
 
         if (!selectedMove) {
-          throw new Error(
-            "Illegal move"
-          );
+          throw new Error("Illegal move");
         }
 
-        /*
-        Promotion
-        */
-
-        if (
-          selectedMove.promotion
-        ) {
+        // Promotion
+        if (selectedMove.promotion) {
           setPromotion({
-            from:
-              selectedSquare,
-
-            to:
-              clickedSquare,
-
-            color:
-              game.turn(),
+            from: selectedSquare,
+            to: clickedSquare,
+            color: game.turn(),
           });
 
           return;
         }
 
-        /*
-        Normal move
-        */
-
+        // Normal move
         makeMove(
           selectedSquare,
           clickedSquare
@@ -812,51 +446,33 @@ function App() {
         // Illegal move
       }
 
-      /*
-      Select another piece
-      */
-
+      // Select another piece
       if (
         piece &&
-        piece.color ===
-          game.turn()
+        piece.color === game.turn()
       ) {
-        setSelectedSquare(
-          clickedSquare
-        );
+        setSelectedSquare(clickedSquare);
       } else {
-        setSelectedSquare(
-          null
-        );
+        setSelectedSquare(null);
       }
 
       return;
     }
 
-    /*
-    Select piece
-    */
-
+    // Select piece
     if (
       piece &&
-      piece.color ===
-        game.turn()
+      piece.color === game.turn()
     ) {
-      setSelectedSquare(
-        clickedSquare
-      );
+      setSelectedSquare(clickedSquare);
     }
   }
 
-  /*
-  ========================================
-  PROMOTION
-  ========================================
-  */
+  // ========================================
+  // PROMOTION
+  // ========================================
 
-  function handlePromotion(
-    piece
-  ) {
+  function handlePromotion(piece) {
     if (!promotion) {
       return;
     }
@@ -868,75 +484,41 @@ function App() {
     );
   }
 
-  /*
-  ========================================
-  UNDO
-  ========================================
-
-  This remains a REAL undo.
-
-  It changes the editing history.
-  */
+  // ========================================
+  // UNDO
+  // ========================================
 
   function handleUndo() {
-    if (
-      historyIndex ===
-      0
-    ) {
+    if (historyIndex === 0) {
       return;
     }
 
-    pendingMoveRef.current =
-      null;
+    pendingMoveRef.current = null;
 
-    const newIndex =
-      historyIndex - 1;
+    const newIndex = historyIndex - 1;
 
-    const previousGame =
-      new Chess(
-        history[newIndex]
-      );
-
-    setGame(
-      previousGame
+    const previousGame = new Chess(
+      history[newIndex]
     );
 
-    setHistoryIndex(
-      newIndex
-    );
+    setGame(previousGame);
+    setHistoryIndex(newIndex);
+    setViewIndex(newIndex);
+    setSelectedSquare(null);
+    setPromotion(null);
 
-    setViewIndex(
-      newIndex
-    );
-
-    setSelectedSquare(
-      null
-    );
-
-    setPromotion(
-      null
-    );
-
-    rebuildMoveHistory(
-      newIndex
-    );
+    rebuildMoveHistory(newIndex);
 
     if (newIndex > 0) {
-      setLastMoveFromHistory(
-        newIndex
-      );
+      setLastMoveFromHistory(newIndex);
     } else {
-      setLastMove(
-        null
-      );
+      setLastMove(null);
     }
   }
 
-  /*
-  ========================================
-  REDO
-  ========================================
-  */
+  // ========================================
+  // REDO
+  // ========================================
 
   function handleRedo() {
     if (
@@ -946,111 +528,54 @@ function App() {
       return;
     }
 
-    pendingMoveRef.current =
-      null;
+    pendingMoveRef.current = null;
 
-    const newIndex =
-      historyIndex + 1;
+    const newIndex = historyIndex + 1;
 
-    const nextGame =
-      new Chess(
-        history[newIndex]
-      );
-
-    setGame(
-      nextGame
+    const nextGame = new Chess(
+      history[newIndex]
     );
 
-    setHistoryIndex(
-      newIndex
-    );
+    setGame(nextGame);
+    setHistoryIndex(newIndex);
+    setViewIndex(newIndex);
+    setSelectedSquare(null);
+    setPromotion(null);
 
-    setViewIndex(
-      newIndex
-    );
-
-    setSelectedSquare(
-      null
-    );
-
-    setPromotion(
-      null
-    );
-
-    rebuildMoveHistory(
-      newIndex
-    );
-
-    setLastMoveFromHistory(
-      newIndex
-    );
+    rebuildMoveHistory(newIndex);
+    setLastMoveFromHistory(newIndex);
   }
 
-  /*
-  ========================================
-  PREVIOUS MOVE
-  ========================================
-
-  IMPORTANT:
-
-  This does NOT delete anything.
-
-  It only changes what position
-  we are viewing.
-  */
+  // ========================================
+  // PREVIOUS MOVE
+  // ========================================
 
   function handlePreviousMove() {
-    if (
-      viewIndex ===
-      0
-    ) {
+    if (viewIndex === 0) {
       return;
     }
 
-    const newIndex =
-      viewIndex - 1;
+    const newIndex = viewIndex - 1;
 
-    const previousGame =
-      new Chess(
-        history[newIndex]
-      );
-
-    setGame(
-      previousGame
+    const previousGame = new Chess(
+      history[newIndex]
     );
 
-    setViewIndex(
-      newIndex
-    );
-
-    setSelectedSquare(
-      null
-    );
-
-    setPromotion(
-      null
-    );
+    setGame(previousGame);
+    setViewIndex(newIndex);
+    setSelectedSquare(null);
+    setPromotion(null);
 
     if (newIndex > 0) {
-      setLastMoveFromHistory(
-        newIndex
-      );
+      setLastMoveFromHistory(newIndex);
     } else {
-      setLastMove(
-        null
-      );
+      setLastMove(null);
     }
   }
 
-  /*
-  ========================================
-  NEXT MOVE
-  ========================================
-
-  IMPORTANT:
-
-  This also does NOT delete anything.
-  */
+  // ========================================
+  // NEXT MOVE
+  // ========================================
 
   function handleNextMove() {
     if (
@@ -1060,185 +585,52 @@ function App() {
       return;
     }
 
-    const newIndex =
-      viewIndex + 1;
+    const newIndex = viewIndex + 1;
 
-    const nextGame =
-      new Chess(
-        history[newIndex]
-      );
-
-    setGame(
-      nextGame
+    const nextGame = new Chess(
+      history[newIndex]
     );
 
-    setViewIndex(
-      newIndex
-    );
+    setGame(nextGame);
+    setViewIndex(newIndex);
+    setSelectedSquare(null);
+    setPromotion(null);
 
-    setSelectedSquare(
-      null
-    );
-
-    setPromotion(
-      null
-    );
-
-    setLastMoveFromHistory(
-      newIndex
-    );
+    setLastMoveFromHistory(newIndex);
   }
 
-  /*
-  ========================================
-  REBUILD MOVE HISTORY
-  ========================================
-  */
+  // ========================================
+  // REBUILD MOVE HISTORY
+  // ========================================
 
-  function rebuildMoveHistory(
-    index
-  ) {
-    const rebuiltMoves =
-      [];
+  function rebuildMoveHistory(index) {
+    const rebuiltMoves = [];
 
-    for (
-      let i = 1;
-      i <= index;
-      i++
-    ) {
-      const before =
-        new Chess(
-          history[i - 1]
-        );
+    for (let i = 1; i <= index; i++) {
+      const before = new Chess(
+        history[i - 1]
+      );
 
-      const after =
-        new Chess(
-          history[i]
-        );
+      const after = new Chess(
+        history[i]
+      );
 
       const possibleMoves =
         before.moves({
           verbose: true,
         });
 
-      const move =
-        possibleMoves.find(
-          (m) => {
-            try {
-              const test =
-                new Chess(
-                  before.fen()
-                );
-
-              test.move({
-                from:
-                  m.from,
-
-                to:
-                  m.to,
-
-                promotion:
-                  m.promotion,
-              });
-
-              return (
-                test.fen() ===
-                after.fen()
-              );
-            } catch {
-              return false;
-            }
-          }
-        );
-
-      if (move) {
-        rebuiltMoves.push({
-          id:
-            `${i}-${move.san}`,
-
-          number:
-            rebuiltMoves.length +
-            1,
-
-          color:
-            before.turn(),
-
-          notation:
-            move.san,
-
-          evaluationBefore:
-            0,
-
-          evaluationAfter:
-            null,
-
-          loss:
-            null,
-
-          classification:
-            null,
-
-          analyzing:
-            false,
-        });
-      }
-    }
-
-    setMoveHistory(
-      rebuiltMoves
-    );
-  }
-
-  /*
-  ========================================
-  FIND LAST MOVE
-  ========================================
-  */
-
-  function setLastMoveFromHistory(
-    index
-  ) {
-    if (index <= 0) {
-      setLastMove(
-        null
-      );
-
-      return;
-    }
-
-    const before =
-      new Chess(
-        history[index - 1]
-      );
-
-    const after =
-      new Chess(
-        history[index]
-      );
-
-    const possibleMoves =
-      before.moves({
-        verbose: true,
-      });
-
-    const move =
-      possibleMoves.find(
+      const move = possibleMoves.find(
         (m) => {
           try {
-            const test =
-              new Chess(
-                before.fen()
-              );
+            const test = new Chess(
+              before.fen()
+            );
 
             test.move({
-              from:
-                m.from,
-
-              to:
-                m.to,
-
-              promotion:
-                m.promotion,
+              from: m.from,
+              to: m.to,
+              promotion: m.promotion,
             });
 
             return (
@@ -1251,57 +643,106 @@ function App() {
         }
       );
 
+      if (move) {
+        rebuiltMoves.push({
+          id: `${i}-${move.san}`,
+          number:
+            rebuiltMoves.length + 1,
+          color: before.turn(),
+          notation: move.san,
+          evaluationBefore: 0,
+          evaluationAfter: null,
+          loss: null,
+          classification: null,
+          analyzing: false,
+        });
+      }
+    }
+
+    setMoveHistory(rebuiltMoves);
+  }
+
+  // ========================================
+  // FIND LAST MOVE
+  // ========================================
+
+  function setLastMoveFromHistory(index) {
+    if (index <= 0) {
+      setLastMove(null);
+      return;
+    }
+
+    const before = new Chess(
+      history[index - 1]
+    );
+
+    const after = new Chess(
+      history[index]
+    );
+
+    const possibleMoves =
+      before.moves({
+        verbose: true,
+      });
+
+    const move = possibleMoves.find(
+      (m) => {
+        try {
+          const test = new Chess(
+            before.fen()
+          );
+
+          test.move({
+            from: m.from,
+            to: m.to,
+            promotion: m.promotion,
+          });
+
+          return (
+            test.fen() ===
+            after.fen()
+          );
+        } catch {
+          return false;
+        }
+      }
+    );
+
     setLastMove(
       move
         ? {
-            from:
-              move.from,
-
-            to:
-              move.to,
+            from: move.from,
+            to: move.to,
           }
         : null
     );
   }
 
-  /*
-  ========================================
-  EVALUATION BAR
-  ========================================
-  */
+  // ========================================
+  // EVALUATION BAR
+  // ========================================
 
   const clampedEvaluation =
     Math.max(
       -5,
-      Math.min(
-        5,
-        evaluation
-      )
+      Math.min(5, evaluation)
     );
 
   const whiteHeight =
-    50 +
-    clampedEvaluation *
-      10;
+    50 + clampedEvaluation * 10;
 
-  /*
-  ========================================
-  RENDER
-  ========================================
-  */
+  // ========================================
+  // RENDER
+  // ========================================
 
   return (
     <div className="app">
 
-      <h1>
-        ♟ Chess Analyzer
-      </h1>
+      <h1>♟ Chess Analyzer</h1>
 
       <div className="game-area">
 
-        {/* ================================= */}
-        {/* EVALUATION BAR */}
-        {/* ================================= */}
+        {/* Evaluation Bar */}
 
         <div className="evaluation-container">
 
@@ -1310,8 +751,7 @@ function App() {
             <div
               className="evaluation-white"
               style={{
-                height:
-                  `${whiteHeight}%`,
+                height: `${whiteHeight}%`,
               }}
             />
 
@@ -1325,32 +765,22 @@ function App() {
               ? "+"
               : ""}
 
-            {evaluation.toFixed(
-              1
-            )}
+            {evaluation.toFixed(1)}
 
           </div>
 
         </div>
 
-        {/* ================================= */}
-        {/* BOARD */}
-        {/* ================================= */}
+        {/* Board */}
 
         <div>
 
           <div className="board">
 
             {board.map(
-              (
-                row,
-                rowIndex
-              ) =>
+              (row, rowIndex) =>
                 row.map(
-                  (
-                    piece,
-                    colIndex
-                  ) => {
+                  (piece, colIndex) => {
 
                     const square =
                       squareName(
@@ -1359,10 +789,8 @@ function App() {
                       );
 
                     const isDark =
-                      (
-                        rowIndex +
-                        colIndex
-                      ) %
+                      (rowIndex +
+                        colIndex) %
                         2 ===
                       1;
 
@@ -1445,28 +873,21 @@ function App() {
 
           </div>
 
-          {/* ================================= */}
-          {/* UNDO / REDO */}
-          {/* ================================= */}
+          {/* Undo / Redo */}
 
           <div className="controls">
 
             <button
-              onClick={
-                handleUndo
-              }
+              onClick={handleUndo}
               disabled={
-                historyIndex ===
-                0
+                historyIndex === 0
               }
             >
               ↩ Undo
             </button>
 
             <button
-              onClick={
-                handleRedo
-              }
+              onClick={handleRedo}
               disabled={
                 historyIndex ===
                 history.length - 1
@@ -1477,9 +898,7 @@ function App() {
 
           </div>
 
-          {/* ================================= */}
-          {/* PREVIOUS / NEXT MOVE */}
-          {/* ================================= */}
+          {/* Previous / Next */}
 
           <div className="controls">
 
@@ -1488,8 +907,7 @@ function App() {
                 handlePreviousMove
               }
               disabled={
-                viewIndex ===
-                0
+                viewIndex === 0
               }
             >
               ↑ Previous Move
@@ -1509,15 +927,11 @@ function App() {
 
           </div>
 
-          {/* ================================= */}
-          {/* POSITION INDICATOR */}
-          {/* ================================= */}
+          {/* Position */}
 
           <p className="status">
 
-            Move{" "}
-            {viewIndex}{" "}
-            /{" "}
+            Move {viewIndex} /{" "}
             {history.length - 1}
 
           </p>
@@ -1526,8 +940,7 @@ function App() {
 
             Turn:{" "}
 
-            {game.turn() ===
-            "w"
+            {game.turn() === "w"
               ? "White"
               : "Black"}
 
@@ -1547,9 +960,7 @@ function App() {
 
         </div>
 
-        {/* ================================= */}
-        {/* MOVE HISTORY */}
-        {/* ================================= */}
+        {/* Move History */}
 
         <div className="move-history">
 
@@ -1566,10 +977,8 @@ function App() {
             <div className="moves-list">
 
               {moveHistory.map(
-                (
-                  move,
-                  index
-                ) => (
+                (move, index) => (
+
                   <span
                     key={
                       move.id ||
@@ -1602,19 +1011,11 @@ function App() {
 
                     {move.notation}
 
-                    {/* ================================= */}
-                    {/* ANALYZING */}
-                    {/* ================================= */}
-
                     {move.analyzing && (
                       <span className="move-analyzing">
                         ...
                       </span>
                     )}
-
-                    {/* ================================= */}
-                    {/* CLASSIFICATION */}
-                    {/* ================================= */}
 
                     {!move.analyzing &&
                       move.classification &&
@@ -1641,6 +1042,7 @@ function App() {
                       )}
 
                   </span>
+
                 )
               )}
 
@@ -1651,11 +1053,10 @@ function App() {
 
       </div>
 
-      {/* ================================= */}
-      {/* PROMOTION */}
-      {/* ================================= */}
+      {/* Promotion Popup */}
 
       {promotion && (
+
         <div className="promotion-overlay">
 
           <div className="promotion-box">
@@ -1739,6 +1140,7 @@ function App() {
           </div>
 
         </div>
+
       )}
 
     </div>
