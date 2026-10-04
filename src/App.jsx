@@ -399,7 +399,44 @@ function App() {
       currentNode.children[0]
     );
   }
+// PGN Inport
 
+function handlePGNImport(event) {
+  const file = event.target.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    const pgn = String(reader.result || "");
+
+    try {
+      const testGame = new Chess();
+
+      testGame.loadPgn(pgn);
+
+      console.log("PGN loaded successfully:", pgn);
+
+      // Temporary test
+      alert("PGN loaded successfully!");
+
+    } catch (error) {
+      console.error("PGN loading error:", error);
+
+      alert(
+        "Invalid PGN file.\n\nPlease check the PGN and try again."
+      );
+    }
+  };
+
+  reader.readAsText(file);
+
+  // Allow selecting the same file again
+  event.target.value = "";
+}
 // =====================================================
 // UNDO
 // =====================================================
@@ -1359,6 +1396,22 @@ function handleRedo() {
 
           </div>
 
+              <div className="pgn-import">
+  <label
+    htmlFor="pgn-file"
+    className="pgn-button"
+  >
+    ＋ Add PGN
+  </label>
+
+  <input
+    id="pgn-file"
+    type="file"
+    accept=".pgn"
+    onChange={handlePGNImport}
+    className="pgn-file-input"
+  />
+</div>
           {/* =============================================
               STATUS
           ============================================= */}

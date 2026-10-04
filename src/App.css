@@ -946,3 +946,49 @@ button {
   background: #222;
   z-index: 1;
 }
+
+.pgn-import {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.pgn-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.pgn-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+
+  background: #292929;
+  color: #d5d5d5;
+
+  font-size: 14px;
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.pgn-button:hover {
+  background: #3a3a3a;
+  color: #ffffff;
+}
+
+.pgn-button:active {
+  transform: scale(0.98);
+}
