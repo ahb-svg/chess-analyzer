@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Chess } from "chess.js";
 import "./App.css";
 
@@ -53,30 +58,77 @@ function classifyMove(loss) {
   };
 }
 
+function createRoot() {
+  return {
+    id: "root",
+    parentId: null,
+    fen: new Chess().fen(),
+    move: null,
+    children: [],
+  };
+}
+
 function App() {
-  const [game, setGame] = useState(new Chess());
-  const [selectedSquare, setSelectedSquare] = useState(null);
-  const [lastMove, setLastMove] = useState(null);
+  // ========================================
+  // VARIATION TREE
+  // ========================================
+
+  const [tree, setTree] = useState(() => ({
+    root: createRoot(),
+  }));
+
+  const [currentNodeId, setCurrentNodeId] =
+    useState("root");
+
+  // ========================================
+  // BOARD UI
+  // ========================================
+
+  const [selectedSquare, setSelectedSquare] =
+    useState(null);
+
   const [promotion, setPromotion] = useState(null);
 
-  const [moveHistory, setMoveHistory] = useState([]);
+  // ========================================
+  // STOCKFISH
+  // ========================================
 
-  const [history, setHistory] = useState([
-    new Chess().fen(),
-  ]);
-
-  const [historyIndex, setHistoryIndex] = useState(0);
-
-  const [viewIndex, setViewIndex] = useState(0);
-
-  // Stockfish evaluation
   const [evaluation, setEvaluation] = useState(0);
-  const [engineReady, setEngineReady] = useState(false);
+  const [engineReady, setEngineReady] =
+    useState(false);
 
   const stockfishRef = useRef(null);
-  const gameRef = useRef(game);
-  const evaluationRef = useRef(evaluation);
+  const gameRef = useRef(null);
+  const evaluationRef = useRef(0);
   const pendingMoveRef = useRef(null);
+
+  // ========================================
+  // UNDO / REDO
+  // ========================================
+
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  // ========================================
+  // RIGHT CLICK MENU
+  // ========================================
+
+  const [contextMenu, setContextMenu] =
+    useState(null);
+
+  // ========================================
+  // CURRENT POSITION
+  // ========================================
+
+  const currentNode =
+    tree[currentNodeId] || tree.root;
+
+  const game = useMemo(
+    () => new Chess(currentNode.fen),
+    [currentNode.fen]
+  );
+
+  const board = game.board();
 
   useEffect(() => {
     gameRef.current = game;
@@ -91,9 +143,6 @@ function App() {
   // ========================================
 
   useEffect(() => {
-    // IMPORTANT:
-    // import.meta.env.BASE_URL makes the path work
-    // both locally and on GitHub Pages.
     const worker = new Worker(
       `${import.meta.env.BASE_URL}stockfish-19-lite-single.js`
     );
@@ -107,139 +156,127 @@ function App() {
         return;
       }
 
-      // Engine ready
+      // ----------------------------
+      // ENGINE READY
+      // ----------------------------
+
       if (message === "readyok") {
         setEngineReady(true);
         return;
       }
 
-      // Centipawn score
-      const cpMatch = message.match(/score cp (-?\d+)/);
+      // ----------------------------
+      // CENTIPAWN SCORE
+      // ----------------------------
+
+      let score = null;
+
+      const cpMatch = message.match(
+        /score cp (-?\d+)/
+      );
 
       if (cpMatch) {
-        const centipawns = parseInt(cpMatch[1], 10);
+        score =
+          parseInt(cpMatch[1], 10) / 100;
+      } else {
+        // ----------------------------
+        // MATE SCORE
+        // ----------------------------
 
-        let score = centipawns / 100;
+        const mateMatch = message.match(
+          /score mate (-?\d+)/
+        );
 
-        // Stockfish score is from side-to-move perspective.
-        // Convert it to White's perspective.
-        if (gameRef.current.turn() === "b") {
-          score = -score;
+        if (mateMatch) {
+          const mateIn = parseInt(
+            mateMatch[1],
+            10
+          );
+
+          score =
+            mateIn > 0
+              ? 10
+              : -10;
         }
+      }
 
-        setEvaluation(score);
-
-        // Move classification
-        const pending = pendingMoveRef.current;
-
-        if (
-          pending &&
-          gameRef.current.fen() === pending.afterFen
-        ) {
-          const before = pending.beforeEvaluation;
-          const movedColor = pending.color;
-
-          let loss;
-
-          if (movedColor === "w") {
-            loss = before - score;
-          } else {
-            loss = score - before;
-          }
-
-          loss = Math.max(0, loss);
-
-          const classification = classifyMove(loss);
-
-          setMoveHistory((currentHistory) => {
-            if (currentHistory.length === 0) {
-              return currentHistory;
-            }
-
-            const updated = [...currentHistory];
-            const lastIndex = updated.length - 1;
-
-            if (updated[lastIndex].id !== pending.id) {
-              return currentHistory;
-            }
-
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              evaluationAfter: score,
-              loss,
-              classification,
-              analyzing: false,
-            };
-
-            return updated;
-          });
-
-          pendingMoveRef.current = null;
-        }
-
+      if (score === null) {
         return;
       }
 
-      // Mate score
-      const mateMatch = message.match(/score mate (-?\d+)/);
+      // Stockfish gives score from
+      // side-to-move perspective.
+      // Convert to White perspective.
 
-      if (mateMatch) {
-        const mateIn = parseInt(mateMatch[1], 10);
+      if (
+        gameRef.current?.turn() === "b"
+      ) {
+        score = -score;
+      }
 
-        let score = mateIn > 0 ? 10 : -10;
+      setEvaluation(score);
 
-        if (gameRef.current.turn() === "b") {
-          score = -score;
+      // ----------------------------
+      // MOVE CLASSIFICATION
+      // ----------------------------
+
+      const pending =
+        pendingMoveRef.current;
+
+      if (
+        pending &&
+        gameRef.current?.fen() ===
+          pending.afterFen
+      ) {
+        const before =
+          pending.beforeEvaluation;
+
+        const movedColor =
+          pending.color;
+
+        let loss;
+
+        if (movedColor === "w") {
+          loss = before - score;
+        } else {
+          loss = score - before;
         }
 
-        setEvaluation(score);
+        loss = Math.max(0, loss);
 
-        const pending = pendingMoveRef.current;
+        const classification =
+          classifyMove(loss);
 
-        if (
-          pending &&
-          gameRef.current.fen() === pending.afterFen
-        ) {
-          const before = pending.beforeEvaluation;
-          const movedColor = pending.color;
+        setTree((oldTree) => {
+          const node =
+            oldTree[pending.nodeId];
 
-          let loss;
-
-          if (movedColor === "w") {
-            loss = before - score;
-          } else {
-            loss = score - before;
+          if (!node) {
+            return oldTree;
           }
 
-          loss = Math.max(0, loss);
+          return {
+            ...oldTree,
 
-          const classification = classifyMove(loss);
+            [pending.nodeId]: {
+              ...node,
 
-          setMoveHistory((currentHistory) => {
-            if (currentHistory.length === 0) {
-              return currentHistory;
-            }
+              evaluationBefore:
+                before,
 
-            const updated = [...currentHistory];
-            const lastIndex = updated.length - 1;
+              evaluationAfter:
+                score,
 
-            if (updated[lastIndex].id !== pending.id) {
-              return currentHistory;
-            }
-
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              evaluationAfter: score,
               loss,
+
               classification,
+
               analyzing: false,
-            };
+            },
+          };
+        });
 
-            return updated;
-          });
-
-          pendingMoveRef.current = null;
-        }
+        pendingMoveRef.current = null;
       }
     };
 
@@ -261,35 +298,61 @@ function App() {
       return;
     }
 
-    const worker = stockfishRef.current;
+    const worker =
+      stockfishRef.current;
 
     if (!worker) {
       return;
     }
 
+    pendingMoveRef.current = null;
+
     worker.postMessage("stop");
 
     worker.postMessage(
-      `position fen ${game.fen()}`
+      `position fen ${currentNode.fen}`
     );
 
-    worker.postMessage("go depth 12");
-  }, [game, engineReady]);
+    worker.postMessage(
+      "go depth 12"
+    );
+  }, [
+    currentNodeId,
+    currentNode.fen,
+    engineReady,
+  ]);
 
   // ========================================
-  // BOARD
+  // CLOSE CONTEXT MENU
   // ========================================
 
-  const board = game.board();
+  useEffect(() => {
+    const closeMenu = () => {
+      setContextMenu(null);
+    };
+
+    window.addEventListener(
+      "click",
+      closeMenu
+    );
+
+    return () => {
+      window.removeEventListener(
+        "click",
+        closeMenu
+      );
+    };
+  }, []);
+
+  // ========================================
+  // BOARD HELPERS
+  // ========================================
 
   function squareName(row, col) {
     const files = "abcdefgh";
+
     return `${files[col]}${8 - row}`;
   }
-
-  // ========================================
-  // LEGAL MOVES
-  // ========================================
 
   function isLegalMove(square) {
     if (!selectedSquare) {
@@ -301,24 +364,139 @@ function App() {
       verbose: true,
     });
 
-    return moves.some((move) => move.to === square);
+    return moves.some(
+      (move) => move.to === square
+    );
   }
 
   // ========================================
-  // SAVE POSITION
+  // LAST MOVE
   // ========================================
 
-  function savePosition(newGame) {
-    const newHistory = history.slice(
-      0,
-      historyIndex + 1
+  function getLastMove() {
+    if (!currentNode.move) {
+      return null;
+    }
+
+    return {
+      from: currentNode.move.from,
+      to: currentNode.move.to,
+    };
+  }
+
+  // ========================================
+  // GO TO NODE
+  // ========================================
+
+  function goToNode(nodeId) {
+    if (!tree[nodeId]) {
+      return;
+    }
+
+    pendingMoveRef.current = null;
+
+    setCurrentNodeId(nodeId);
+
+    setSelectedSquare(null);
+
+    setPromotion(null);
+
+    setContextMenu(null);
+  }
+
+  // ========================================
+  // PREVIOUS MOVE
+  // ========================================
+
+  function handlePreviousMove() {
+    if (!currentNode.parentId) {
+      return;
+    }
+
+    goToNode(currentNode.parentId);
+  }
+
+  // ========================================
+  // NEXT MOVE
+  // ========================================
+
+  function handleNextMove() {
+    if (
+      currentNode.children.length === 0
+    ) {
+      return;
+    }
+
+    // First child is always
+    // the MAIN variation.
+
+    goToNode(
+      currentNode.children[0]
+    );
+  }
+
+  // ========================================
+  // UNDO
+  // ========================================
+
+  function handleUndo() {
+    if (!currentNode.parentId) {
+      return;
+    }
+
+    const parentId =
+      currentNode.parentId;
+
+    setRedoStack((old) => [
+      ...old,
+      currentNodeId,
+    ]);
+
+    setCurrentNodeId(parentId);
+
+    setSelectedSquare(null);
+
+    setPromotion(null);
+
+    pendingMoveRef.current = null;
+  }
+
+  // ========================================
+  // REDO
+  // ========================================
+
+  function handleRedo() {
+    if (redoStack.length === 0) {
+      return;
+    }
+
+    const nextId =
+      redoStack[
+        redoStack.length - 1
+      ];
+
+    if (!tree[nextId]) {
+      setRedoStack([]);
+
+      return;
+    }
+
+    setRedoStack((old) =>
+      old.slice(0, -1)
     );
 
-    newHistory.push(newGame.fen());
+    setUndoStack((old) => [
+      ...old,
+      currentNodeId,
+    ]);
 
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-    setViewIndex(newHistory.length - 1);
+    setCurrentNodeId(nextId);
+
+    setSelectedSquare(null);
+
+    setPromotion(null);
+
+    pendingMoveRef.current = null;
   }
 
   // ========================================
@@ -330,12 +508,9 @@ function App() {
     to,
     promotionPiece = null
   ) {
-    // Do not edit an old position.
-    if (viewIndex !== history.length - 1) {
-      return;
-    }
-
-    const newGame = new Chess(game.fen());
+    const newGame = new Chess(
+      currentNode.fen
+    );
 
     const moveData = {
       from,
@@ -343,56 +518,165 @@ function App() {
     };
 
     if (promotionPiece) {
-      moveData.promotion = promotionPiece;
+      moveData.promotion =
+        promotionPiece;
     }
 
     try {
-      const move = newGame.move(moveData);
+      const move =
+        newGame.move(moveData);
 
       if (!move) {
         return;
       }
 
-      const beforeEvaluation =
-        evaluationRef.current;
+      // --------------------------------
+      // CHECK IF THIS MOVE ALREADY EXISTS
+      // --------------------------------
+
+      const existingChild =
+        currentNode.children
+          .map(
+            (id) => tree[id]
+          )
+          .find(
+            (node) =>
+              node?.move?.from ===
+                from &&
+              node?.move?.to ===
+                to &&
+              (node?.move?.promotion ||
+                null) ===
+                (promotionPiece ||
+                  null)
+          );
+
+      // --------------------------------
+      // EXISTING VARIATION
+      // --------------------------------
+
+      if (existingChild) {
+        setUndoStack((old) => [
+          ...old,
+          currentNodeId,
+        ]);
+
+        setRedoStack([]);
+
+        setCurrentNodeId(
+          existingChild.id
+        );
+
+        setSelectedSquare(null);
+
+        setPromotion(null);
+
+        return;
+      }
+
+      // --------------------------------
+      // CREATE NEW VARIATION
+      // --------------------------------
 
       const moveId =
-        Date.now() + Math.random();
+        `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
 
-      pendingMoveRef.current = {
+      const newNode = {
         id: moveId,
-        beforeEvaluation,
-        color: game.turn(),
-        afterFen: newGame.fen(),
+
+        parentId:
+          currentNodeId,
+
+        fen: newGame.fen(),
+
+        children: [],
+
+        move: {
+          from,
+
+          to,
+
+          promotion:
+            promotionPiece ||
+            null,
+
+          san: move.san,
+
+          color: game.turn(),
+
+          moveNumber:
+            game.moveNumber(),
+        },
+
+        evaluationBefore:
+          evaluationRef.current,
+
+        evaluationAfter: null,
+
+        loss: null,
+
+        classification: null,
+
+        analyzing: true,
       };
 
-      savePosition(newGame);
+      setTree((oldTree) => ({
+        ...oldTree,
 
-      setLastMove({
-        from,
-        to,
-      });
+        [moveId]: newNode,
 
-      setMoveHistory((previousHistory) => [
-        ...previousHistory,
-        {
-          id: moveId,
-          number: previousHistory.length + 1,
-          color: game.turn(),
-          notation: move.san,
-          evaluationBefore: beforeEvaluation,
-          evaluationAfter: null,
-          loss: null,
-          classification: null,
-          analyzing: true,
+        [currentNodeId]: {
+          ...oldTree[
+            currentNodeId
+          ],
+
+          children: [
+            ...oldTree[
+              currentNodeId
+            ].children,
+
+            moveId,
+          ],
         },
+      }));
+
+      // Current position becomes
+      // parent of the new move.
+
+      setUndoStack((old) => [
+        ...old,
+        currentNodeId,
       ]);
 
-      setGame(newGame);
+      // A new branch means
+      // old redo is no longer valid.
+
+      setRedoStack([]);
+
+      setCurrentNodeId(moveId);
+
       setSelectedSquare(null);
+
       setPromotion(null);
+
+      // Stockfish will classify
+      // this exact move.
+
+      pendingMoveRef.current = {
+        nodeId: moveId,
+
+        beforeEvaluation:
+          evaluationRef.current,
+
+        color: game.turn(),
+
+        afterFen:
+          newGame.fen(),
+      };
     } catch {
-      // Invalid move
+      // Illegal move.
     }
   }
 
@@ -400,58 +684,72 @@ function App() {
   // BOARD CLICK
   // ========================================
 
-  function handleSquareClick(row, col) {
-    // Don't edit old positions.
-    if (viewIndex !== history.length - 1) {
-      return;
-    }
+  function handleSquareClick(
+    row,
+    col
+  ) {
+    const clickedSquare =
+      squareName(row, col);
 
-    const clickedSquare = squareName(row, col);
-    const piece = board[row][col];
+    const piece =
+      board[row][col];
 
     if (selectedSquare) {
-      try {
-        const moves = game.moves({
-          square: selectedSquare,
+      const moves =
+        game.moves({
+          square:
+            selectedSquare,
+
           verbose: true,
         });
 
-        const selectedMove = moves.find(
-          (move) => move.to === clickedSquare
+      const selectedMove =
+        moves.find(
+          (move) =>
+            move.to ===
+            clickedSquare
         );
 
-        if (!selectedMove) {
-          throw new Error("Illegal move");
-        }
-
+      if (selectedMove) {
         // Promotion
-        if (selectedMove.promotion) {
+
+        if (
+          selectedMove.promotion
+        ) {
           setPromotion({
-            from: selectedSquare,
-            to: clickedSquare,
-            color: game.turn(),
+            from:
+              selectedSquare,
+
+            to:
+              clickedSquare,
+
+            color:
+              game.turn(),
           });
 
           return;
         }
 
         // Normal move
+
         makeMove(
           selectedSquare,
           clickedSquare
         );
 
         return;
-      } catch {
-        // Illegal move
       }
 
       // Select another piece
+
       if (
         piece &&
-        piece.color === game.turn()
+        piece.color ===
+          game.turn()
       ) {
-        setSelectedSquare(clickedSquare);
+        setSelectedSquare(
+          clickedSquare
+        );
       } else {
         setSelectedSquare(null);
       }
@@ -460,11 +758,15 @@ function App() {
     }
 
     // Select piece
+
     if (
       piece &&
-      piece.color === game.turn()
+      piece.color ===
+        game.turn()
     ) {
-      setSelectedSquare(clickedSquare);
+      setSelectedSquare(
+        clickedSquare
+      );
     }
   }
 
@@ -472,7 +774,9 @@ function App() {
   // PROMOTION
   // ========================================
 
-  function handlePromotion(piece) {
+  function handlePromotion(
+    piece
+  ) {
     if (!promotion) {
       return;
     }
@@ -485,236 +789,384 @@ function App() {
   }
 
   // ========================================
-  // UNDO
+  // PROMOTE VARIATION TO MAIN LINE
   // ========================================
 
-  function handleUndo() {
-    if (historyIndex === 0) {
+  function promoteToMain(
+    nodeId
+  ) {
+    const node =
+      tree[nodeId];
+
+    if (!node?.parentId) {
       return;
     }
 
-    pendingMoveRef.current = null;
+    const parent =
+      tree[node.parentId];
 
-    const newIndex = historyIndex - 1;
+    const children = [
+      ...parent.children,
+    ];
 
-    const previousGame = new Chess(
-      history[newIndex]
-    );
-
-    setGame(previousGame);
-    setHistoryIndex(newIndex);
-    setViewIndex(newIndex);
-    setSelectedSquare(null);
-    setPromotion(null);
-
-    rebuildMoveHistory(newIndex);
-
-    if (newIndex > 0) {
-      setLastMoveFromHistory(newIndex);
-    } else {
-      setLastMove(null);
-    }
-  }
-
-  // ========================================
-  // REDO
-  // ========================================
-
-  function handleRedo() {
-    if (
-      historyIndex >=
-      history.length - 1
-    ) {
-      return;
-    }
-
-    pendingMoveRef.current = null;
-
-    const newIndex = historyIndex + 1;
-
-    const nextGame = new Chess(
-      history[newIndex]
-    );
-
-    setGame(nextGame);
-    setHistoryIndex(newIndex);
-    setViewIndex(newIndex);
-    setSelectedSquare(null);
-    setPromotion(null);
-
-    rebuildMoveHistory(newIndex);
-    setLastMoveFromHistory(newIndex);
-  }
-
-  // ========================================
-  // PREVIOUS MOVE
-  // ========================================
-
-  function handlePreviousMove() {
-    if (viewIndex === 0) {
-      return;
-    }
-
-    const newIndex = viewIndex - 1;
-
-    const previousGame = new Chess(
-      history[newIndex]
-    );
-
-    setGame(previousGame);
-    setViewIndex(newIndex);
-    setSelectedSquare(null);
-    setPromotion(null);
-
-    if (newIndex > 0) {
-      setLastMoveFromHistory(newIndex);
-    } else {
-      setLastMove(null);
-    }
-  }
-
-  // ========================================
-  // NEXT MOVE
-  // ========================================
-
-  function handleNextMove() {
-    if (
-      viewIndex >=
-      history.length - 1
-    ) {
-      return;
-    }
-
-    const newIndex = viewIndex + 1;
-
-    const nextGame = new Chess(
-      history[newIndex]
-    );
-
-    setGame(nextGame);
-    setViewIndex(newIndex);
-    setSelectedSquare(null);
-    setPromotion(null);
-
-    setLastMoveFromHistory(newIndex);
-  }
-
-  // ========================================
-  // REBUILD MOVE HISTORY
-  // ========================================
-
-  function rebuildMoveHistory(index) {
-    const rebuiltMoves = [];
-
-    for (let i = 1; i <= index; i++) {
-      const before = new Chess(
-        history[i - 1]
+    const index =
+      children.indexOf(
+        nodeId
       );
 
-      const after = new Chess(
-        history[i]
-      );
-
-      const possibleMoves =
-        before.moves({
-          verbose: true,
-        });
-
-      const move = possibleMoves.find(
-        (m) => {
-          try {
-            const test = new Chess(
-              before.fen()
-            );
-
-            test.move({
-              from: m.from,
-              to: m.to,
-              promotion: m.promotion,
-            });
-
-            return (
-              test.fen() ===
-              after.fen()
-            );
-          } catch {
-            return false;
-          }
-        }
-      );
-
-      if (move) {
-        rebuiltMoves.push({
-          id: `${i}-${move.san}`,
-          number:
-            rebuiltMoves.length + 1,
-          color: before.turn(),
-          notation: move.san,
-          evaluationBefore: 0,
-          evaluationAfter: null,
-          loss: null,
-          classification: null,
-          analyzing: false,
-        });
-      }
-    }
-
-    setMoveHistory(rebuiltMoves);
-  }
-
-  // ========================================
-  // FIND LAST MOVE
-  // ========================================
-
-  function setLastMoveFromHistory(index) {
     if (index <= 0) {
-      setLastMove(null);
+      setContextMenu(null);
+
       return;
     }
 
-    const before = new Chess(
-      history[index - 1]
+    // Remove it
+
+    children.splice(
+      index,
+      1
     );
 
-    const after = new Chess(
-      history[index]
+    // Put it first
+
+    children.unshift(
+      nodeId
     );
 
-    const possibleMoves =
-      before.moves({
-        verbose: true,
-      });
+    setTree((oldTree) => ({
+      ...oldTree,
 
-    const move = possibleMoves.find(
-      (m) => {
-        try {
-          const test = new Chess(
-            before.fen()
-          );
+      [node.parentId]: {
+        ...oldTree[
+          node.parentId
+        ],
 
-          test.move({
-            from: m.from,
-            to: m.to,
-            promotion: m.promotion,
-          });
+        children,
+      },
+    }));
 
-          return (
-            test.fen() ===
-            after.fen()
-          );
-        } catch {
-          return false;
-        }
+    setContextMenu(null);
+  }
+
+  // ========================================
+  // MAKE SUB-VARIATION
+  // ========================================
+
+  function makeSubVariation(
+    nodeId
+  ) {
+    const node =
+      tree[nodeId];
+
+    if (!node?.parentId) {
+      return;
+    }
+
+    const parent =
+      tree[node.parentId];
+
+    const children = [
+      ...parent.children,
+    ];
+
+    const index =
+      children.indexOf(
+        nodeId
+      );
+
+    if (
+      index < 0 ||
+      children.length <= 1
+    ) {
+      setContextMenu(null);
+
+      return;
+    }
+
+    // Remove from current position
+
+    children.splice(
+      index,
+      1
+    );
+
+    // Put at end
+
+    children.push(nodeId);
+
+    setTree((oldTree) => ({
+      ...oldTree,
+
+      [node.parentId]: {
+        ...oldTree[
+          node.parentId
+        ],
+
+        children,
+      },
+    }));
+
+    setContextMenu(null);
+  }
+
+  // ========================================
+  // COLLECT SUBTREE
+  // ========================================
+
+  function collectSubtreeIds(
+    nodeId,
+    result = []
+  ) {
+    result.push(nodeId);
+
+    const node =
+      tree[nodeId];
+
+    if (!node) {
+      return result;
+    }
+
+    node.children.forEach(
+      (childId) =>
+        collectSubtreeIds(
+          childId,
+          result
+        )
+    );
+
+    return result;
+  }
+
+  // ========================================
+  // DELETE VARIATION
+  // ========================================
+
+  function deleteVariation(
+    nodeId
+  ) {
+    const node =
+      tree[nodeId];
+
+    if (!node?.parentId) {
+      return;
+    }
+
+    const parentId =
+      node.parentId;
+
+    const parent =
+      tree[parentId];
+
+    const removedIds =
+      collectSubtreeIds(
+        nodeId
+      );
+
+    const nextTree = {
+      ...tree,
+    };
+
+    removedIds.forEach(
+      (id) => {
+        delete nextTree[id];
       }
     );
 
-    setLastMove(
-      move
-        ? {
-            from: move.from,
-            to: move.to,
-          }
-        : null
+    nextTree[parentId] = {
+      ...nextTree[parentId],
+
+      children:
+        nextTree[
+          parentId
+        ].children.filter(
+          (id) =>
+            id !== nodeId
+        ),
+    };
+
+    setTree(nextTree);
+
+    // If current position was
+    // inside deleted branch,
+    // return to parent.
+
+    if (
+      removedIds.includes(
+        currentNodeId
+      )
+    ) {
+      setCurrentNodeId(
+        parentId
+      );
+
+      setSelectedSquare(null);
+
+      setPromotion(null);
+    }
+
+    setUndoStack([]);
+
+    setRedoStack([]);
+
+    setContextMenu(null);
+
+    pendingMoveRef.current =
+      null;
+  }
+
+  // ========================================
+  // RIGHT CLICK
+  // ========================================
+
+  function openContextMenu(
+    event,
+    nodeId
+  ) {
+    event.preventDefault();
+
+    event.stopPropagation();
+
+    const node =
+      tree[nodeId];
+
+    if (!node?.parentId) {
+      return;
+    }
+
+    setContextMenu({
+      nodeId,
+
+      x: event.clientX,
+
+      y: event.clientY,
+    });
+  }
+
+  // ========================================
+  // MOVE TREE RENDERING
+  // ========================================
+
+  function renderMoveTree(
+    parentId,
+    depth = 0
+  ) {
+    const parent =
+      tree[parentId];
+
+    if (
+      !parent ||
+      parent.children.length ===
+        0
+    ) {
+      return null;
+    }
+
+    return parent.children.map(
+      (
+        childId,
+        childIndex
+      ) => {
+        const node =
+          tree[childId];
+
+        if (!node) {
+          return null;
+        }
+
+        const isCurrent =
+          node.id ===
+          currentNodeId;
+
+        const isMain =
+          childIndex === 0;
+
+        return (
+          <div
+            className={`variation-node ${
+              isMain
+                ? "main-variation"
+                : "sub-variation"
+            }`}
+            style={{
+              marginLeft:
+                `${depth * 16}px`,
+            }}
+            key={node.id}
+          >
+            <button
+              className={`move-button ${
+                isCurrent
+                  ? "current-move"
+                  : ""
+              }`}
+              onClick={() =>
+                goToNode(
+                  node.id
+                )
+              }
+              onContextMenu={(
+                event
+              ) =>
+                openContextMenu(
+                  event,
+                  node.id
+                )
+              }
+              title="Right-click for variation options"
+            >
+              <span className="move-number">
+                {node.move.color ===
+                "w"
+                  ? `${node.move.moveNumber}.`
+                  : `${node.move.moveNumber}...`}
+              </span>
+
+              <span>
+                {node.move.san}
+              </span>
+
+              {node.analyzing && (
+                <span className="move-analyzing">
+                  ...
+                </span>
+              )}
+
+              {!node.analyzing &&
+                node.classification
+                  ?.symbol && (
+                  <span
+                    className={`move-classification ${node.classification.className}`}
+                    title={
+                      node.loss !==
+                      null
+                        ? `${node.classification.label} - Evaluation loss: ${node.loss.toFixed(
+                            2
+                          )}`
+                        : node.classification.label
+                    }
+                  >
+                    {
+                      node
+                        .classification
+                        .symbol
+                    }
+                  </span>
+                )}
+
+              {!isMain && (
+                <span className="variation-label">
+                  variation
+                </span>
+              )}
+            </button>
+
+            {renderMoveTree(
+              node.id,
+              depth + 1
+            )}
+          </div>
+        );
+      }
     );
   }
 
@@ -725,11 +1177,18 @@ function App() {
   const clampedEvaluation =
     Math.max(
       -5,
-      Math.min(5, evaluation)
+      Math.min(
+        5,
+        evaluation
+      )
     );
 
   const whiteHeight =
-    50 + clampedEvaluation * 10;
+    50 +
+    clampedEvaluation * 10;
+
+  const lastMove =
+    getLastMove();
 
   // ========================================
   // RENDER
@@ -737,51 +1196,51 @@ function App() {
 
   return (
     <div className="app">
-
-      <h1>♟ Chess Analyzer</h1>
+      <h1>
+        ♟ Chess Analyzer
+      </h1>
 
       <div className="game-area">
 
         {/* Evaluation Bar */}
 
         <div className="evaluation-container">
-
           <div className="evaluation-bar">
-
             <div
               className="evaluation-white"
               style={{
-                height: `${whiteHeight}%`,
+                height:
+                  `${whiteHeight}%`,
               }}
             />
 
             <div className="evaluation-black" />
-
           </div>
 
           <div className="evaluation-number">
-
             {evaluation >= 0
               ? "+"
               : ""}
-
-            {evaluation.toFixed(1)}
-
+            {evaluation.toFixed(
+              1
+            )}
           </div>
-
         </div>
 
         {/* Board */}
 
         <div>
-
           <div className="board">
-
             {board.map(
-              (row, rowIndex) =>
+              (
+                row,
+                rowIndex
+              ) =>
                 row.map(
-                  (piece, colIndex) => {
-
+                  (
+                    piece,
+                    colIndex
+                  ) => {
                     const square =
                       squareName(
                         rowIndex,
@@ -805,39 +1264,31 @@ function App() {
 
                     const isLastMove =
                       lastMove &&
-                      (
-                        lastMove.from ===
-                          square ||
+                      (lastMove.from ===
+                        square ||
                         lastMove.to ===
-                          square
-                      );
+                          square);
 
                     return (
                       <div
                         key={square}
-                        className={`
-                          square
-                          ${
-                            isDark
-                              ? "dark"
-                              : "light"
-                          }
-                          ${
-                            isSelected
-                              ? "selected"
-                              : ""
-                          }
-                          ${
-                            isLegal
-                              ? "legal-move"
-                              : ""
-                          }
-                          ${
-                            isLastMove
-                              ? "last-move"
-                              : ""
-                          }
-                        `}
+                        className={`square ${
+                          isDark
+                            ? "dark"
+                            : "light"
+                        } ${
+                          isSelected
+                            ? "selected"
+                            : ""
+                        } ${
+                          isLegal
+                            ? "legal-move"
+                            : ""
+                        } ${
+                          isLastMove
+                            ? "last-move"
+                            : ""
+                        }`}
                         onClick={() =>
                           handleSquareClick(
                             rowIndex,
@@ -845,7 +1296,6 @@ function App() {
                           )
                         }
                       >
-
                         {piece && (
                           <span
                             className={
@@ -864,50 +1314,49 @@ function App() {
                             }
                           </span>
                         )}
-
                       </div>
                     );
                   }
                 )
             )}
-
           </div>
 
           {/* Undo / Redo */}
 
           <div className="controls">
-
             <button
-              onClick={handleUndo}
+              onClick={
+                handleUndo
+              }
               disabled={
-                historyIndex === 0
+                !currentNode.parentId
               }
             >
               ↩ Undo
             </button>
 
             <button
-              onClick={handleRedo}
+              onClick={
+                handleRedo
+              }
               disabled={
-                historyIndex ===
-                history.length - 1
+                redoStack.length ===
+                0
               }
             >
               Redo ↪
             </button>
-
           </div>
 
           {/* Previous / Next */}
 
           <div className="controls">
-
             <button
               onClick={
                 handlePreviousMove
               }
               disabled={
-                viewIndex === 0
+                !currentNode.parentId
               }
             >
               ↑ Previous Move
@@ -918,32 +1367,32 @@ function App() {
                 handleNextMove
               }
               disabled={
-                viewIndex >=
-                history.length - 1
+                currentNode.children
+                  .length === 0
               }
             >
               Next Move ↓
             </button>
-
           </div>
 
-          {/* Position */}
-
           <p className="status">
-
-            Move {viewIndex} /{" "}
-            {history.length - 1}
-
+            {currentNode.parentId
+              ? `Move: ${currentNode.move.moveNumber}${
+                  currentNode.move.color ===
+                  "b"
+                    ? "..."
+                    : "."
+                } ${
+                  currentNode.move.san
+                }`
+              : "Starting Position"}
           </p>
 
           <p className="status">
-
             Turn:{" "}
-
             {game.turn() === "w"
               ? "White"
               : "Black"}
-
           </p>
 
           {game.isCheck() && (
@@ -957,192 +1406,184 @@ function App() {
               Checkmate!
             </p>
           )}
-
         </div>
 
         {/* Move History */}
 
         <div className="move-history">
-
           <h2>
             Move History
           </h2>
 
-          {moveHistory.length ===
-          0 ? (
-            <p className="no-moves">
-              No moves yet
-            </p>
-          ) : (
-            <div className="moves-list">
+          <div className="variation-help">
+            Right-click a move for
+            variation options.
+          </div>
 
-              {moveHistory.map(
-                (move, index) => (
-
-                  <span
-                    key={
-                      move.id ||
-                      index
-                    }
-                    className="move"
-                  >
-
-                    {move.color ===
-                      "w" && (
-                      <strong>
-                        {Math.ceil(
-                          move.number /
-                            2
-                        )}
-                        .
-                      </strong>
-                    )}
-
-                    {move.color ===
-                      "b" && (
-                      <span className="black-move-number">
-                        {Math.ceil(
-                          move.number /
-                            2
-                        )}
-                        ...
-                      </span>
-                    )}
-
-                    {move.notation}
-
-                    {move.analyzing && (
-                      <span className="move-analyzing">
-                        ...
-                      </span>
-                    )}
-
-                    {!move.analyzing &&
-                      move.classification &&
-                      move.classification
-                        .symbol && (
-                        <span
-                          className={`move-classification ${move.classification.className}`}
-                          title={
-                            move.loss !==
-                            null
-                              ? `${move.classification.label} - Evaluation loss: ${move.loss.toFixed(
-                                  2
-                                )}`
-                              : move.classification.label
-                          }
-                        >
-                          {" "}
-                          {
-                            move
-                              .classification
-                              .symbol
-                          }
-                        </span>
-                      )}
-
-                  </span>
-
-                )
-              )}
-
-            </div>
-          )}
-
+          <div className="moves-tree">
+            {tree.root.children
+              .length === 0 ? (
+              <p className="no-moves">
+                No moves yet
+              </p>
+            ) : (
+              renderMoveTree(
+                "root"
+              )
+            )}
+          </div>
         </div>
-
       </div>
+
+      {/* Context Menu */}
+
+      {contextMenu && (
+        <div
+          className="variation-context-menu"
+          style={{
+            left:
+              `${contextMenu.x}px`,
+
+            top:
+              `${contextMenu.y}px`,
+          }}
+          onClick={(event) =>
+            event.stopPropagation()
+          }
+        >
+          {tree[
+            contextMenu.nodeId
+          ]?.parentId &&
+            tree[
+              tree[
+                contextMenu
+                  .nodeId
+              ].parentId
+            ]?.children.indexOf(
+              contextMenu.nodeId
+            ) > 0 && (
+              <button
+                onClick={() =>
+                  promoteToMain(
+                    contextMenu.nodeId
+                  )
+                }
+              >
+                ⭐ Promote to Main Line
+              </button>
+            )}
+
+          {tree[
+            contextMenu.nodeId
+          ]?.parentId &&
+            tree[
+              tree[
+                contextMenu
+                  .nodeId
+              ].parentId
+            ]?.children.indexOf(
+              contextMenu.nodeId
+            ) === 0 &&
+            tree[
+              tree[
+                contextMenu
+                  .nodeId
+              ].parentId
+            ]?.children.length >
+              1 && (
+              <button
+                onClick={() =>
+                  makeSubVariation(
+                    contextMenu.nodeId
+                  )
+                }
+              >
+                ↳ Make Sub-Variation
+              </button>
+            )}
+
+          <button
+            className="delete-variation"
+            onClick={() =>
+              deleteVariation(
+                contextMenu.nodeId
+              )
+            }
+          >
+            🗑 Delete Variation
+          </button>
+        </div>
+      )}
 
       {/* Promotion Popup */}
 
       {promotion && (
-
         <div className="promotion-overlay">
-
           <div className="promotion-box">
-
             <h2>
               Choose Promotion
             </h2>
 
             <div className="promotion-options">
+              {[
+                [
+                  "q",
+                  promotion.color ===
+                  "w"
+                    ? "♕"
+                    : "♛",
+                  "Queen",
+                ],
+                [
+                  "r",
+                  promotion.color ===
+                  "w"
+                    ? "♖"
+                    : "♜",
+                  "Rook",
+                ],
+                [
+                  "b",
+                  promotion.color ===
+                  "w"
+                    ? "♗"
+                    : "♝",
+                  "Bishop",
+                ],
+                [
+                  "n",
+                  promotion.color ===
+                  "w"
+                    ? "♘"
+                    : "♞",
+                  "Knight",
+                ],
+              ].map(
+                ([
+                  piece,
+                  symbol,
+                  label,
+                ]) => (
+                  <button
+                    key={piece}
+                    onClick={() =>
+                      handlePromotion(
+                        piece
+                      )
+                    }
+                  >
+                    {symbol}
 
-              <button
-                onClick={() =>
-                  handlePromotion(
-                    "q"
-                  )
-                }
-              >
-                {promotion.color ===
-                "w"
-                  ? "♕"
-                  : "♛"}
-
-                <span>
-                  Queen
-                </span>
-              </button>
-
-              <button
-                onClick={() =>
-                  handlePromotion(
-                    "r"
-                  )
-                }
-              >
-                {promotion.color ===
-                "w"
-                  ? "♖"
-                  : "♜"}
-
-                <span>
-                  Rook
-                </span>
-              </button>
-
-              <button
-                onClick={() =>
-                  handlePromotion(
-                    "b"
-                  )
-                }
-              >
-                {promotion.color ===
-                "w"
-                  ? "♗"
-                  : "♝"}
-
-                <span>
-                  Bishop
-                </span>
-              </button>
-
-              <button
-                onClick={() =>
-                  handlePromotion(
-                    "n"
-                  )
-                }
-              >
-                {promotion.color ===
-                "w"
-                  ? "♘"
-                  : "♞"}
-
-                <span>
-                  Knight
-                </span>
-              </button>
-
+                    <span>
+                      {label}
+                    </span>
+                  </button>
+                )
+              )}
             </div>
-
           </div>
-
         </div>
-
       )}
-
     </div>
   );
 }
