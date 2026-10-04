@@ -1061,3 +1061,30 @@ button {
   color: #ffffff;
   pointer-events: none;
 }
+
+/* =========================
+   OPENING INFO
+   ========================= */
+
+.opening-info {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #222222;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.opening-name {
+  color: #e5e5e5;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.opening-variation {
+  margin-top: 4px;
+  color: #999999;
+  font-size: 12px;
+}
