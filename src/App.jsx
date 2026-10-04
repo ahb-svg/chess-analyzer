@@ -145,6 +145,23 @@ function App() {
 
   const board = game.board();
 
+  const firstThreeMoves = [
+    { from: "e2", to: "e4" },
+    { from: "e7", to: "e5" },
+    { from: "g1", to: "f3" },
+  ];
+
+  function getArrowPoint(square) {
+    const files = "abcdefgh";
+    const file = files.indexOf(square[0]);
+    const rank = parseInt(square[1], 10);
+
+    return {
+      x: file * 100 + 50,
+      y: (8 - rank) * 100 + 50,
+    };
+  }
+
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
@@ -522,9 +539,6 @@ function handlePGNImport(event) {
       const moves = pgnGame.history({
         verbose: true,
       });
-       updateOpeningFromMoves(
-  moves.map((move) => move.san)
-);
 
       if (moves.length === 0) {
         throw new Error("No moves found in PGN.");
@@ -597,6 +611,13 @@ function handlePGNImport(event) {
 
       pgnAnalysisQueueRef.current = analysisQueue;
       pgnAnalysisActiveRef.current = false;
+
+      // Detect the opening of the imported PGN.
+      const importedOpening = detectOpening(
+        moves.map((move) => move.san)
+      );
+
+      setOpeningInfo(importedOpening);
 
       setTree(newTree);
       setCurrentNodeId(parentId);
@@ -809,24 +830,6 @@ function handleRedo() {
         newGame.move(moveData);
 
       if (!move) {
-        const openingMoves = [];
-
-let nodeId = currentNodeId;
-
-while (nodeId && tree[nodeId]) {
-  const node = tree[nodeId];
-
-  if (node.move?.san) {
-    openingMoves.unshift(node.move.san);
-  }
-
-  nodeId = node.parentId;
-}
-
-openingMoves.push(move.san);
-
-updateOpeningFromMoves(openingMoves);
-
         return;
       }
 
@@ -928,6 +931,26 @@ updateOpeningFromMoves(openingMoves);
           ],
         },
       }));
+
+      // Update opening detector
+      const openingMoves = [];
+      let openingNodeId = currentNodeId;
+
+      while (
+        openingNodeId &&
+        tree[openingNodeId]
+      ) {
+        const node = tree[openingNodeId];
+
+        if (node.move?.san) {
+          openingMoves.unshift(node.move.san);
+        }
+
+        openingNodeId = node.parentId;
+      }
+
+      openingMoves.push(move.san);
+      updateOpeningFromMoves(openingMoves);
 
       setUndoStack((old) => [
         ...old,
@@ -1398,73 +1421,73 @@ updateOpeningFromMoves(openingMoves);
   // UI
   // =====================================================
 
+// =====================================================
+// OPENING DETECTOR
+// =====================================================
+
 function detectOpening(moves) {
+  if (!Array.isArray(moves) || moves.length === 0) {
+    return {
+      name: "Unknown Opening",
+      variation: "",
+    };
+  }
+
   const sequence = moves.join(" ");
 
-  // =========================
-  // 1. e4 OPENINGS
-  // =========================
+  // ===================================================
+  // 1. e4 e5
+  // ===================================================
 
-  // Ruy Lopez
-  if (sequence.startsWith("1. e4 e5 2. Nf3 Nc6 3. Bb5")) {
+  if (sequence.startsWith("e4 e5 Nf3 Nc6 Bb5")) {
     return {
       name: "Ruy Lopez",
       variation: "",
     };
   }
 
-  // Italian Game
-  if (sequence.startsWith("1. e4 e5 2. Nf3 Nc6 3. Bc4")) {
+  if (sequence.startsWith("e4 e5 Nf3 Nc6 Bc4")) {
     return {
       name: "Italian Game",
       variation: "",
     };
   }
 
-  // Scotch Game
-  if (sequence.startsWith("1. e4 e5 2. Nf3 Nc6 3. d4")) {
+  if (sequence.startsWith("e4 e5 Nf3 Nc6 d4")) {
     return {
       name: "Scotch Game",
       variation: "",
     };
   }
 
-  // King's Gambit
-  if (sequence.startsWith("1. e4 e5 2. f4")) {
+  if (sequence.startsWith("e4 e5 f4")) {
     return {
       name: "King's Gambit",
       variation: "",
     };
   }
 
-  // Vienna Game
-  if (sequence.startsWith("1. e4 e5 2. Nc3")) {
-    return {
-      name: "Vienna Game",
-      variation: "",
-    };
-  }
-
-  // Four Knights Game
-  if (sequence.startsWith("1. e4 e5 2. Nf3 Nc6 3. Nc3")) {
+  if (sequence.startsWith("e4 e5 Nf3 Nc6 Nc3")) {
     return {
       name: "Four Knights Game",
       variation: "",
     };
   }
 
-  // Sicilian Defense
-  if (sequence.startsWith("1. e4 c5")) {
+  if (sequence.startsWith("e4 e5 Nc3")) {
     return {
-      name: "Sicilian Defense",
+      name: "Vienna Game",
       variation: "",
     };
   }
 
-  // Sicilian Najdorf
+  // ===================================================
+  // SICILIAN - SPECIFIC VARIATIONS FIRST
+  // ===================================================
+
   if (
     sequence.startsWith(
-      "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6"
+      "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"
     )
   ) {
     return {
@@ -1473,10 +1496,9 @@ function detectOpening(moves) {
     };
   }
 
-  // Sicilian Dragon
   if (
     sequence.startsWith(
-      "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 g6"
+      "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6"
     )
   ) {
     return {
@@ -1485,111 +1507,74 @@ function detectOpening(moves) {
     };
   }
 
-  // Sicilian Alapin
-  if (sequence.startsWith("1. e4 c5 2. c3")) {
+  if (sequence.startsWith("e4 c5 c3")) {
     return {
       name: "Sicilian Defense",
       variation: "Alapin Variation",
     };
   }
 
-  // French Defense
-  if (sequence.startsWith("1. e4 e6")) {
+  if (sequence.startsWith("e4 c5")) {
+    return {
+      name: "Sicilian Defense",
+      variation: "",
+    };
+  }
+
+  // ===================================================
+  // OTHER 1.e4 DEFENSES
+  // ===================================================
+
+  if (sequence.startsWith("e4 e6")) {
     return {
       name: "French Defense",
       variation: "",
     };
   }
 
-  // Caro-Kann
-  if (sequence.startsWith("1. e4 c6")) {
+  if (sequence.startsWith("e4 c6")) {
     return {
       name: "Caro-Kann Defense",
       variation: "",
     };
   }
 
-  // Pirc Defense
-  if (sequence.startsWith("1. e4 d6")) {
+  if (sequence.startsWith("e4 d6")) {
     return {
       name: "Pirc Defense",
       variation: "",
     };
   }
 
-  // Scandinavian Defense
-  if (sequence.startsWith("1. e4 d5")) {
+  if (sequence.startsWith("e4 d5")) {
     return {
       name: "Scandinavian Defense",
       variation: "",
     };
   }
 
-  // Alekhine Defense
-  if (sequence.startsWith("1. e4 Nf6")) {
+  if (sequence.startsWith("e4 Nf6")) {
     return {
       name: "Alekhine Defense",
       variation: "",
     };
   }
 
-  // Modern Defense
-  if (sequence.startsWith("1. e4 g6")) {
+  if (sequence.startsWith("e4 g6")) {
     return {
       name: "Modern Defense",
       variation: "",
     };
   }
 
+  // ===================================================
+  // 1.d4
+  // ===================================================
 
-  // =========================
-  // 1. d4 OPENINGS
-  // =========================
-
-  // Queen's Gambit
-  if (sequence.startsWith("1. d4 d5 2. c4")) {
-    return {
-      name: "Queen's Gambit",
-      variation: "",
-    };
-  }
-
-  // Queen's Gambit Declined
-  if (sequence.startsWith("1. d4 d5 2. c4 e6")) {
-    return {
-      name: "Queen's Gambit",
-      variation: "Declined",
-    };
-  }
-
-  // Queen's Gambit Accepted
-  if (sequence.startsWith("1. d4 d5 2. c4 dxc4")) {
-    return {
-      name: "Queen's Gambit",
-      variation: "Accepted",
-    };
-  }
-
-  // Slav Defense
-  if (sequence.startsWith("1. d4 d5 2. c4 c6")) {
-    return {
-      name: "Slav Defense",
-      variation: "",
-    };
-  }
-
-  // King's Indian Defense
-  if (sequence.startsWith("1. d4 Nf6 2. c4 g6")) {
-    return {
-      name: "King's Indian Defense",
-      variation: "",
-    };
-  }
-
-  // Grunfeld Defense
+  // Specific defenses first
   if (
     sequence.startsWith(
-      "1. d4 Nf6 2. c4 g6 3. Nc3 d5"
+      "d4 Nf6 c4 g6 Nc3 d5"
     )
   ) {
     return {
@@ -1598,10 +1583,9 @@ function detectOpening(moves) {
     };
   }
 
-  // Nimzo-Indian Defense
   if (
     sequence.startsWith(
-      "1. d4 Nf6 2. c4 e6 3. Nc3 Bb4"
+      "d4 Nf6 c4 e6 Nc3 Bb4"
     )
   ) {
     return {
@@ -1610,10 +1594,9 @@ function detectOpening(moves) {
     };
   }
 
-  // Queen's Indian Defense
   if (
     sequence.startsWith(
-      "1. d4 Nf6 2. c4 e6 3. Nf3 b6"
+      "d4 Nf6 c4 e6 Nf3 b6"
     )
   ) {
     return {
@@ -1622,10 +1605,9 @@ function detectOpening(moves) {
     };
   }
 
-  // Bogo-Indian Defense
   if (
     sequence.startsWith(
-      "1. d4 Nf6 2. c4 e6 3. Nf3 Bb4+"
+      "d4 Nf6 c4 e6 Nf3 Bb4+"
     )
   ) {
     return {
@@ -1634,18 +1616,9 @@ function detectOpening(moves) {
     };
   }
 
-  // Dutch Defense
-  if (sequence.startsWith("1. d4 f5")) {
-    return {
-      name: "Dutch Defense",
-      variation: "",
-    };
-  }
-
-  // Benoni Defense
   if (
     sequence.startsWith(
-      "1. d4 Nf6 2. c4 c5 3. d5"
+      "d4 Nf6 c4 c5 d5"
     )
   ) {
     return {
@@ -1654,88 +1627,102 @@ function detectOpening(moves) {
     };
   }
 
+  if (sequence.startsWith("d4 Nf6 c4 g6")) {
+    return {
+      name: "King's Indian Defense",
+      variation: "",
+    };
+  }
 
-  // =========================
-  // 1. c4 OPENINGS
-  // =========================
+  if (sequence.startsWith("d4 f5")) {
+    return {
+      name: "Dutch Defense",
+      variation: "",
+    };
+  }
 
-  // English Opening
-  if (sequence.startsWith("1. c4")) {
+  if (sequence.startsWith("d4 d5 c4 e6")) {
+    return {
+      name: "Queen's Gambit",
+      variation: "Declined",
+    };
+  }
+
+  if (sequence.startsWith("d4 d5 c4 dxc4")) {
+    return {
+      name: "Queen's Gambit",
+      variation: "Accepted",
+    };
+  }
+
+  if (sequence.startsWith("d4 d5 c4 c6")) {
+    return {
+      name: "Slav Defense",
+      variation: "",
+    };
+  }
+
+  if (sequence.startsWith("d4 d5 c4")) {
+    return {
+      name: "Queen's Gambit",
+      variation: "",
+    };
+  }
+
+  // ===================================================
+  // OTHER OPENINGS
+  // ===================================================
+
+  if (sequence.startsWith("c4")) {
     return {
       name: "English Opening",
       variation: "",
     };
   }
 
-
-  // =========================
-  // 1. Nf3 OPENINGS
-  // =========================
-
-  // Réti Opening
-  if (sequence.startsWith("1. Nf3")) {
+  if (sequence.startsWith("Nf3")) {
     return {
       name: "Réti Opening",
       variation: "",
     };
   }
 
-
-  // =========================
-  // 1. b3 / 1. f4
-  // =========================
-
-  // Nimzowitsch-Larsen Attack
-  if (sequence.startsWith("1. b3")) {
+  if (sequence.startsWith("b3")) {
     return {
       name: "Nimzowitsch-Larsen Attack",
       variation: "",
     };
   }
 
-  // Bird Opening
-  if (sequence.startsWith("1. f4")) {
+  if (sequence.startsWith("f4")) {
     return {
       name: "Bird Opening",
       variation: "",
     };
   }
 
-
-  // =========================
-  // UNKNOWN
-  // =========================
-
   return {
     name: "Unknown Opening",
     variation: "",
- 
   };
-// SAVE
+}
+
+// =====================================================
+// UPDATE OPENING
+// =====================================================
+
 function updateOpeningFromMoves(moves) {
-  if (!moves || moves.length === 0) {
+  if (!Array.isArray(moves) || moves.length === 0) {
     return;
   }
 
   const opening = detectOpening(moves);
 
-  setOpeningInfo((current) => {
-    if (
-      current.name !== "Unknown Opening"
-    ) {
-      return current;
-    }
+  if (opening.name === "Unknown Opening") {
+    return;
+  }
 
-    if (
-      opening.name === "Unknown Opening"
-    ) {
-      return current;
-    }
-
-    return opening;
-  });
-}
-
+  setOpeningInfo(opening);
 }
 
 
@@ -1785,7 +1772,8 @@ function updateOpeningFromMoves(moves) {
         =============================================== */}
 
         <div className="board-section">
-          <div className="board">
+          <div className="board-wrapper">
+            <div className="board">
             {board.map(
               (row, rowIndex) =>
                 row.map(
@@ -1873,7 +1861,9 @@ function updateOpeningFromMoves(moves) {
                   }
                 )
             )}
-          </div>
+            </div>
+
+            </div>
 
           {/* =============================================
               ICON NAVIGATION
