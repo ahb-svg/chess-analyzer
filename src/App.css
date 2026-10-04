@@ -1088,3 +1088,42 @@ button {
   color: #999999;
   font-size: 12px;
 }
+
+/* ============================= */
+/* FIRST 3 MOVE ARROWS */
+/* ============================= */
+
+.board-container {
+  position: relative;
+}
+
+.move-arrow {
+  position: absolute;
+  pointer-events: none;
+  z-index: 20;
+  transform-origin: left center;
+}
+
+.move-arrow-line {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 6px;
+  background: #e53935;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.35);
+}
+
+.move-arrow-head {
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 18px solid #e53935;
+  transform: translateY(-50%);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
+}
