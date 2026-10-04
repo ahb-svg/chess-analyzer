@@ -69,59 +69,53 @@ function createRoot() {
 }
 
 function App() {
-  // ========================================
-  // VARIATION TREE
-  // ========================================
+  // =========================
+  // GAME TREE
+  // =========================
 
   const [tree, setTree] = useState(() => ({
     root: createRoot(),
   }));
 
-  const [currentNodeId, setCurrentNodeId] =
-    useState("root");
+  const [currentNodeId, setCurrentNodeId] = useState("root");
 
-  // ========================================
-  // BOARD UI
-  // ========================================
+  // =========================
+  // BOARD STATE
+  // =========================
 
-  const [selectedSquare, setSelectedSquare] =
-    useState(null);
-
+  const [selectedSquare, setSelectedSquare] = useState(null);
   const [promotion, setPromotion] = useState(null);
 
-  // ========================================
+  // =========================
   // STOCKFISH
-  // ========================================
+  // =========================
 
   const [evaluation, setEvaluation] = useState(0);
-  const [engineReady, setEngineReady] =
-    useState(false);
+  const [engineReady, setEngineReady] = useState(false);
 
   const stockfishRef = useRef(null);
   const gameRef = useRef(null);
   const evaluationRef = useRef(0);
   const pendingMoveRef = useRef(null);
 
-  // ========================================
+  // =========================
   // UNDO / REDO
-  // ========================================
+  // =========================
 
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
-  // ========================================
+  // =========================
   // RIGHT CLICK MENU
-  // ========================================
+  // =========================
 
-  const [contextMenu, setContextMenu] =
-    useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
 
-  // ========================================
+  // =========================
   // CURRENT POSITION
-  // ========================================
+  // =========================
 
-  const currentNode =
-    tree[currentNodeId] || tree.root;
+  const currentNode = tree[currentNodeId] || tree.root;
 
   const game = useMemo(
     () => new Chess(currentNode.fen),
@@ -138,9 +132,9 @@ function App() {
     evaluationRef.current = evaluation;
   }, [evaluation]);
 
-  // ========================================
-  // STOCKFISH
-  // ========================================
+  // =========================
+  // STOCKFISH SETUP
+  // =========================
 
   useEffect(() => {
     const worker = new Worker(
@@ -152,87 +146,49 @@ function App() {
     worker.onmessage = (event) => {
       const message = event.data;
 
-      if (typeof message !== "string") {
-        return;
-      }
-
-      // ----------------------------
-      // ENGINE READY
-      // ----------------------------
+      if (typeof message !== "string") return;
 
       if (message === "readyok") {
         setEngineReady(true);
         return;
       }
 
-      // ----------------------------
-      // CENTIPAWN SCORE
-      // ----------------------------
-
       let score = null;
 
-      const cpMatch = message.match(
-        /score cp (-?\d+)/
-      );
+      const cpMatch = message.match(/score cp (-?\d+)/);
 
       if (cpMatch) {
-        score =
-          parseInt(cpMatch[1], 10) / 100;
+        score = parseInt(cpMatch[1], 10) / 100;
       } else {
-        // ----------------------------
-        // MATE SCORE
-        // ----------------------------
-
-        const mateMatch = message.match(
-          /score mate (-?\d+)/
-        );
+        const mateMatch = message.match(/score mate (-?\d+)/);
 
         if (mateMatch) {
-          const mateIn = parseInt(
-            mateMatch[1],
-            10
-          );
+          const mateIn = parseInt(mateMatch[1], 10);
 
-          score =
-            mateIn > 0
-              ? 10
-              : -10;
+          score = mateIn > 0 ? 10 : -10;
         }
       }
 
-      if (score === null) {
-        return;
-      }
+      if (score === null) return;
 
-      // Stockfish gives score from
-      // side-to-move perspective.
-      // Convert to White perspective.
-
-      if (
-        gameRef.current?.turn() === "b"
-      ) {
+      if (gameRef.current?.turn() === "b") {
         score = -score;
       }
 
       setEvaluation(score);
 
-      // ----------------------------
-      // MOVE CLASSIFICATION
-      // ----------------------------
+      // =========================
+      // CLASSIFY LAST MOVE
+      // =========================
 
-      const pending =
-        pendingMoveRef.current;
+      const pending = pendingMoveRef.current;
 
       if (
         pending &&
-        gameRef.current?.fen() ===
-          pending.afterFen
+        gameRef.current?.fen() === pending.afterFen
       ) {
-        const before =
-          pending.beforeEvaluation;
-
-        const movedColor =
-          pending.color;
+        const before = pending.beforeEvaluation;
+        const movedColor = pending.color;
 
         let loss;
 
@@ -244,33 +200,21 @@ function App() {
 
         loss = Math.max(0, loss);
 
-        const classification =
-          classifyMove(loss);
+        const classification = classifyMove(loss);
 
         setTree((oldTree) => {
-          const node =
-            oldTree[pending.nodeId];
+          const node = oldTree[pending.nodeId];
 
-          if (!node) {
-            return oldTree;
-          }
+          if (!node) return oldTree;
 
           return {
             ...oldTree,
-
             [pending.nodeId]: {
               ...node,
-
-              evaluationBefore:
-                before,
-
-              evaluationAfter:
-                score,
-
+              evaluationBefore: before,
+              evaluationAfter: score,
               loss,
-
               classification,
-
               analyzing: false,
             },
           };
@@ -289,21 +233,16 @@ function App() {
     };
   }, []);
 
-  // ========================================
+  // =========================
   // ANALYZE CURRENT POSITION
-  // ========================================
+  // =========================
 
   useEffect(() => {
-    if (!engineReady) {
-      return;
-    }
+    if (!engineReady) return;
 
-    const worker =
-      stockfishRef.current;
+    const worker = stockfishRef.current;
 
-    if (!worker) {
-      return;
-    }
+    if (!worker) return;
 
     pendingMoveRef.current = null;
 
@@ -313,40 +252,32 @@ function App() {
       `position fen ${currentNode.fen}`
     );
 
-    worker.postMessage(
-      "go depth 12"
-    );
+    worker.postMessage("go depth 12");
   }, [
     currentNodeId,
     currentNode.fen,
     engineReady,
   ]);
 
-  // ========================================
+  // =========================
   // CLOSE CONTEXT MENU
-  // ========================================
+  // =========================
 
   useEffect(() => {
     const closeMenu = () => {
       setContextMenu(null);
     };
 
-    window.addEventListener(
-      "click",
-      closeMenu
-    );
+    window.addEventListener("click", closeMenu);
 
     return () => {
-      window.removeEventListener(
-        "click",
-        closeMenu
-      );
+      window.removeEventListener("click", closeMenu);
     };
   }, []);
 
-  // ========================================
+  // =========================
   // BOARD HELPERS
-  // ========================================
+  // =========================
 
   function squareName(row, col) {
     const files = "abcdefgh";
@@ -355,9 +286,7 @@ function App() {
   }
 
   function isLegalMove(square) {
-    if (!selectedSquare) {
-      return false;
-    }
+    if (!selectedSquare) return false;
 
     const moves = game.moves({
       square: selectedSquare,
@@ -369,14 +298,8 @@ function App() {
     );
   }
 
-  // ========================================
-  // LAST MOVE
-  // ========================================
-
   function getLastMove() {
-    if (!currentNode.move) {
-      return null;
-    }
+    if (!currentNode.move) return null;
 
     return {
       from: currentNode.move.from,
@@ -384,68 +307,44 @@ function App() {
     };
   }
 
-  // ========================================
-  // GO TO NODE
-  // ========================================
+  // =========================
+  // NAVIGATION
+  // =========================
 
   function goToNode(nodeId) {
-    if (!tree[nodeId]) {
-      return;
-    }
+    if (!tree[nodeId]) return;
 
     pendingMoveRef.current = null;
 
     setCurrentNodeId(nodeId);
-
     setSelectedSquare(null);
-
     setPromotion(null);
-
     setContextMenu(null);
   }
 
-  // ========================================
-  // PREVIOUS MOVE
-  // ========================================
-
   function handlePreviousMove() {
-    if (!currentNode.parentId) {
-      return;
-    }
+    if (!currentNode.parentId) return;
 
     goToNode(currentNode.parentId);
   }
 
-  // ========================================
-  // NEXT MOVE
-  // ========================================
-
   function handleNextMove() {
-    if (
-      currentNode.children.length === 0
-    ) {
+    if (currentNode.children.length === 0) {
       return;
     }
 
-    // First child is always
-    // the MAIN variation.
-
-    goToNode(
-      currentNode.children[0]
-    );
+    // Always follow MAIN variation
+    goToNode(currentNode.children[0]);
   }
 
-  // ========================================
+  // =========================
   // UNDO
-  // ========================================
+  // =========================
 
   function handleUndo() {
-    if (!currentNode.parentId) {
-      return;
-    }
+    if (!currentNode.parentId) return;
 
-    const parentId =
-      currentNode.parentId;
+    const parentId = currentNode.parentId;
 
     setRedoStack((old) => [
       ...old,
@@ -455,25 +354,20 @@ function App() {
     setCurrentNodeId(parentId);
 
     setSelectedSquare(null);
-
     setPromotion(null);
 
     pendingMoveRef.current = null;
   }
 
-  // ========================================
+  // =========================
   // REDO
-  // ========================================
+  // =========================
 
   function handleRedo() {
-    if (redoStack.length === 0) {
-      return;
-    }
+    if (redoStack.length === 0) return;
 
     const nextId =
-      redoStack[
-        redoStack.length - 1
-      ];
+      redoStack[redoStack.length - 1];
 
     if (!tree[nextId]) {
       setRedoStack([]);
@@ -493,15 +387,14 @@ function App() {
     setCurrentNodeId(nextId);
 
     setSelectedSquare(null);
-
     setPromotion(null);
 
     pendingMoveRef.current = null;
   }
 
-  // ========================================
+  // =========================
   // MAKE MOVE
-  // ========================================
+  // =========================
 
   function makeMove(
     from,
@@ -518,42 +411,28 @@ function App() {
     };
 
     if (promotionPiece) {
-      moveData.promotion =
-        promotionPiece;
+      moveData.promotion = promotionPiece;
     }
 
     try {
-      const move =
-        newGame.move(moveData);
+      const move = newGame.move(moveData);
 
-      if (!move) {
-        return;
-      }
+      if (!move) return;
 
-      // --------------------------------
-      // CHECK IF THIS MOVE ALREADY EXISTS
-      // --------------------------------
+      // =========================
+      // CHECK IF SAME MOVE ALREADY EXISTS
+      // =========================
 
       const existingChild =
         currentNode.children
-          .map(
-            (id) => tree[id]
-          )
+          .map((id) => tree[id])
           .find(
             (node) =>
-              node?.move?.from ===
-                from &&
-              node?.move?.to ===
-                to &&
-              (node?.move?.promotion ||
-                null) ===
-                (promotionPiece ||
-                  null)
+              node?.move?.from === from &&
+              node?.move?.to === to &&
+              (node?.move?.promotion || null) ===
+                (promotionPiece || null)
           );
-
-      // --------------------------------
-      // EXISTING VARIATION
-      // --------------------------------
 
       if (existingChild) {
         setUndoStack((old) => [
@@ -568,15 +447,14 @@ function App() {
         );
 
         setSelectedSquare(null);
-
         setPromotion(null);
 
         return;
       }
 
-      // --------------------------------
-      // CREATE NEW VARIATION
-      // --------------------------------
+      // =========================
+      // CREATE NEW VARIATION NODE
+      // =========================
 
       const moveId =
         `${Date.now()}-${Math.random()
@@ -586,8 +464,7 @@ function App() {
       const newNode = {
         id: moveId,
 
-        parentId:
-          currentNodeId,
+        parentId: currentNodeId,
 
         fen: newGame.fen(),
 
@@ -595,19 +472,12 @@ function App() {
 
         move: {
           from,
-
           to,
-
           promotion:
-            promotionPiece ||
-            null,
-
+            promotionPiece || null,
           san: move.san,
-
           color: game.turn(),
-
-          moveNumber:
-            game.moveNumber(),
+          moveNumber: game.moveNumber(),
         },
 
         evaluationBefore:
@@ -628,41 +498,27 @@ function App() {
         [moveId]: newNode,
 
         [currentNodeId]: {
-          ...oldTree[
-            currentNodeId
-          ],
+          ...oldTree[currentNodeId],
 
           children: [
-            ...oldTree[
-              currentNodeId
-            ].children,
-
+            ...oldTree[currentNodeId]
+              .children,
             moveId,
           ],
         },
       }));
-
-      // Current position becomes
-      // parent of the new move.
 
       setUndoStack((old) => [
         ...old,
         currentNodeId,
       ]);
 
-      // A new branch means
-      // old redo is no longer valid.
-
       setRedoStack([]);
 
       setCurrentNodeId(moveId);
 
       setSelectedSquare(null);
-
       setPromotion(null);
-
-      // Stockfish will classify
-      // this exact move.
 
       pendingMoveRef.current = {
         nodeId: moveId,
@@ -672,65 +528,47 @@ function App() {
 
         color: game.turn(),
 
-        afterFen:
-          newGame.fen(),
+        afterFen: newGame.fen(),
       };
     } catch {
-      // Illegal move.
+      // Illegal move
     }
   }
 
-  // ========================================
-  // BOARD CLICK
-  // ========================================
+  // =========================
+  // SQUARE CLICK
+  // =========================
 
-  function handleSquareClick(
-    row,
-    col
-  ) {
+  function handleSquareClick(row, col) {
     const clickedSquare =
       squareName(row, col);
 
-    const piece =
-      board[row][col];
+    const piece = board[row][col];
 
+    // A piece is already selected
     if (selectedSquare) {
-      const moves =
-        game.moves({
-          square:
-            selectedSquare,
-
-          verbose: true,
-        });
+      const moves = game.moves({
+        square: selectedSquare,
+        verbose: true,
+      });
 
       const selectedMove =
         moves.find(
           (move) =>
-            move.to ===
-            clickedSquare
+            move.to === clickedSquare
         );
 
       if (selectedMove) {
         // Promotion
-
-        if (
-          selectedMove.promotion
-        ) {
+        if (selectedMove.promotion) {
           setPromotion({
-            from:
-              selectedSquare,
-
-            to:
-              clickedSquare,
-
-            color:
-              game.turn(),
+            from: selectedSquare,
+            to: clickedSquare,
+            color: game.turn(),
           });
 
           return;
         }
-
-        // Normal move
 
         makeMove(
           selectedSquare,
@@ -740,12 +578,10 @@ function App() {
         return;
       }
 
-      // Select another piece
-
+      // Select another own piece
       if (
         piece &&
-        piece.color ===
-          game.turn()
+        piece.color === game.turn()
       ) {
         setSelectedSquare(
           clickedSquare
@@ -758,28 +594,20 @@ function App() {
     }
 
     // Select piece
-
     if (
       piece &&
-      piece.color ===
-        game.turn()
+      piece.color === game.turn()
     ) {
-      setSelectedSquare(
-        clickedSquare
-      );
+      setSelectedSquare(clickedSquare);
     }
   }
 
-  // ========================================
+  // =========================
   // PROMOTION
-  // ========================================
+  // =========================
 
-  function handlePromotion(
-    piece
-  ) {
-    if (!promotion) {
-      return;
-    }
+  function handlePromotion(piece) {
+    if (!promotion) return;
 
     makeMove(
       promotion.from,
@@ -788,31 +616,23 @@ function App() {
     );
   }
 
-  // ========================================
-  // PROMOTE VARIATION TO MAIN LINE
-  // ========================================
+  // =========================
+  // PROMOTE VARIATION TO MAIN
+  // =========================
 
-  function promoteToMain(
-    nodeId
-  ) {
-    const node =
-      tree[nodeId];
+  function promoteToMain(nodeId) {
+    const node = tree[nodeId];
 
-    if (!node?.parentId) {
-      return;
-    }
+    if (!node?.parentId) return;
 
-    const parent =
-      tree[node.parentId];
+    const parent = tree[node.parentId];
 
     const children = [
       ...parent.children,
     ];
 
     const index =
-      children.indexOf(
-        nodeId
-      );
+      children.indexOf(nodeId);
 
     if (index <= 0) {
       setContextMenu(null);
@@ -820,26 +640,15 @@ function App() {
       return;
     }
 
-    // Remove it
+    children.splice(index, 1);
 
-    children.splice(
-      index,
-      1
-    );
-
-    // Put it first
-
-    children.unshift(
-      nodeId
-    );
+    children.unshift(nodeId);
 
     setTree((oldTree) => ({
       ...oldTree,
 
       [node.parentId]: {
-        ...oldTree[
-          node.parentId
-        ],
+        ...oldTree[node.parentId],
 
         children,
       },
@@ -848,31 +657,23 @@ function App() {
     setContextMenu(null);
   }
 
-  // ========================================
+  // =========================
   // MAKE SUB-VARIATION
-  // ========================================
+  // =========================
 
-  function makeSubVariation(
-    nodeId
-  ) {
-    const node =
-      tree[nodeId];
+  function makeSubVariation(nodeId) {
+    const node = tree[nodeId];
 
-    if (!node?.parentId) {
-      return;
-    }
+    if (!node?.parentId) return;
 
-    const parent =
-      tree[node.parentId];
+    const parent = tree[node.parentId];
 
     const children = [
       ...parent.children,
     ];
 
     const index =
-      children.indexOf(
-        nodeId
-      );
+      children.indexOf(nodeId);
 
     if (
       index < 0 ||
@@ -883,14 +684,7 @@ function App() {
       return;
     }
 
-    // Remove from current position
-
-    children.splice(
-      index,
-      1
-    );
-
-    // Put at end
+    children.splice(index, 1);
 
     children.push(nodeId);
 
@@ -898,9 +692,7 @@ function App() {
       ...oldTree,
 
       [node.parentId]: {
-        ...oldTree[
-          node.parentId
-        ],
+        ...oldTree[node.parentId],
 
         children,
       },
@@ -909,9 +701,9 @@ function App() {
     setContextMenu(null);
   }
 
-  // ========================================
-  // COLLECT SUBTREE
-  // ========================================
+  // =========================
+  // COLLECT ENTIRE SUBTREE
+  // =========================
 
   function collectSubtreeIds(
     nodeId,
@@ -919,298 +711,264 @@ function App() {
   ) {
     result.push(nodeId);
 
-    const node =
-      tree[nodeId];
+    const node = tree[nodeId];
 
-    if (!node) {
-      return result;
-    }
+    if (!node) return result;
 
     node.children.forEach(
-      (childId) =>
+      (childId) => {
         collectSubtreeIds(
           childId,
           result
-        )
+        );
+      }
     );
 
     return result;
   }
 
-  // ========================================
+  // =========================
   // DELETE VARIATION
-  // ========================================
+  // =========================
 
-  function deleteVariation(
-    nodeId
-  ) {
-    const node =
-      tree[nodeId];
+  function deleteVariation(nodeId) {
+    const node = tree[nodeId];
 
-    if (!node?.parentId) {
-      return;
-    }
+    if (!node?.parentId) return;
 
-    const parentId =
-      node.parentId;
-
-    const parent =
-      tree[parentId];
+    const parentId = node.parentId;
 
     const removedIds =
-      collectSubtreeIds(
-        nodeId
-      );
+      collectSubtreeIds(nodeId);
 
     const nextTree = {
       ...tree,
     };
 
-    removedIds.forEach(
-      (id) => {
-        delete nextTree[id];
-      }
-    );
+    removedIds.forEach((id) => {
+      delete nextTree[id];
+    });
 
     nextTree[parentId] = {
       ...nextTree[parentId],
 
       children:
-        nextTree[
-          parentId
-        ].children.filter(
-          (id) =>
-            id !== nodeId
-        ),
+        nextTree[parentId]
+          .children
+          .filter(
+            (id) => id !== nodeId
+          ),
     };
 
     setTree(nextTree);
-
-    // If current position was
-    // inside deleted branch,
-    // return to parent.
 
     if (
       removedIds.includes(
         currentNodeId
       )
     ) {
-      setCurrentNodeId(
-        parentId
-      );
+      setCurrentNodeId(parentId);
 
       setSelectedSquare(null);
-
       setPromotion(null);
     }
 
     setUndoStack([]);
-
     setRedoStack([]);
 
     setContextMenu(null);
 
-    pendingMoveRef.current =
-      null;
+    pendingMoveRef.current = null;
   }
 
-  // ========================================
+  // =========================
   // RIGHT CLICK
-  // ========================================
+  // =========================
 
   function openContextMenu(
     event,
     nodeId
   ) {
     event.preventDefault();
-
     event.stopPropagation();
 
-    const node =
-      tree[nodeId];
+    const node = tree[nodeId];
 
-    if (!node?.parentId) {
-      return;
-    }
+    if (!node?.parentId) return;
 
     setContextMenu({
       nodeId,
-
       x: event.clientX,
-
       y: event.clientY,
     });
   }
 
-  // ========================================
-  // MOVE TREE RENDERING
-  // ========================================
+  // =====================================================
+  // MOVE TREE RENDERER
+  // =====================================================
 
   function renderMoveTree(
     parentId,
-    depth = 0
+    depth = 0,
+    isVariation = false
   ) {
-    const parent =
-      tree[parentId];
+    const parent = tree[parentId];
 
     if (
       !parent ||
-      parent.children.length ===
-        0
+      parent.children.length === 0
     ) {
       return null;
     }
 
-    return parent.children.map(
-      (
-        childId,
-        childIndex
-      ) => {
-        const node =
-          tree[childId];
-
-        if (!node) {
-          return null;
+    return (
+      <div
+        className={
+          isVariation
+            ? "variation-branch"
+            : "main-line"
         }
+      >
+        {parent.children.map(
+          (childId, childIndex) => {
+            const node = tree[childId];
 
-        const isCurrent =
-          node.id ===
-          currentNodeId;
+            if (!node) return null;
 
-        const isMain =
-          childIndex === 0;
+            const isCurrent =
+              node.id ===
+              currentNodeId;
 
-        return (
-          <div
-            className={`variation-node ${
-              isMain
-                ? "main-variation"
-                : "sub-variation"
-            }`}
-            style={{
-              marginLeft:
-                `${depth * 16}px`,
-            }}
-            key={node.id}
-          >
-            <button
-              className={`move-button ${
-                isCurrent
-                  ? "current-move"
-                  : ""
-              }`}
-              onClick={() =>
-                goToNode(
-                  node.id
-                )
-              }
-              onContextMenu={(
-                event
-              ) =>
-                openContextMenu(
-                  event,
-                  node.id
-                )
-              }
-              title="Right-click for variation options"
-            >
-              <span className="move-number">
-                {node.move.color ===
-                "w"
-                  ? `${node.move.moveNumber}.`
-                  : `${node.move.moveNumber}...`}
-              </span>
+            // FIRST CHILD = MAIN LINE
+            const isMain =
+              childIndex === 0;
 
-              <span>
-                {node.move.san}
-              </span>
-
-              {node.analyzing && (
-                <span className="move-analyzing">
-                  ...
-                </span>
-              )}
-
-              {!node.analyzing &&
-                node.classification
-                  ?.symbol && (
-                  <span
-                    className={`move-classification ${node.classification.className}`}
-                    title={
-                      node.loss !==
-                      null
-                        ? `${node.classification.label} - Evaluation loss: ${node.loss.toFixed(
-                            2
-                          )}`
-                        : node.classification.label
-                    }
-                  >
-                    {
-                      node
-                        .classification
-                        .symbol
-                    }
+            return (
+              <div
+                className={`variation-node ${
+                  isMain
+                    ? "main-variation"
+                    : "sub-variation"
+                }`}
+                key={node.id}
+              >
+                {/* Branch symbol ONLY for variations */}
+                {!isMain && (
+                  <span className="variation-branch-symbol">
+                    \
                   </span>
                 )}
 
-              {!isMain && (
-                <span className="variation-label">
-                  variation
-                </span>
-              )}
-            </button>
+                <button
+                  className={`move-button ${
+                    isCurrent
+                      ? "current-move"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    goToNode(node.id)
+                  }
+                  onContextMenu={(event) =>
+                    openContextMenu(
+                      event,
+                      node.id
+                    )
+                  }
+                  title="Right-click for variation options"
+                >
+                  <span className="move-number">
+                    {node.move.color ===
+                    "w"
+                      ? `${node.move.moveNumber}.`
+                      : `${node.move.moveNumber}...`}
+                  </span>
 
-            {renderMoveTree(
-              node.id,
-              depth + 1
-            )}
-          </div>
-        );
-      }
+                  <span>
+                    {node.move.san}
+                  </span>
+
+                  {node.analyzing && (
+                    <span className="move-analyzing">
+                      ...
+                    </span>
+                  )}
+
+                  {!node.analyzing &&
+                    node.classification
+                      ?.symbol && (
+                      <span
+                        className={`move-classification ${node.classification.className}`}
+                        title={
+                          node.loss !==
+                          null
+                            ? `${node.classification.label} - Evaluation loss: ${node.loss.toFixed(
+                                2
+                              )}`
+                            : node
+                                .classification
+                                .label
+                        }
+                      >
+                        {
+                          node
+                            .classification
+                            .symbol
+                        }
+                      </span>
+                    )}
+                </button>
+
+                {/* Continue this line */}
+                {renderMoveTree(
+                  node.id,
+                  depth + 1,
+                  !isMain ||
+                    isVariation
+                )}
+              </div>
+            );
+          }
+        )}
+      </div>
     );
   }
 
-  // ========================================
+  // =========================
   // EVALUATION BAR
-  // ========================================
+  // =========================
 
   const clampedEvaluation =
     Math.max(
       -5,
-      Math.min(
-        5,
-        evaluation
-      )
+      Math.min(5, evaluation)
     );
 
   const whiteHeight =
-    50 +
-    clampedEvaluation * 10;
+    50 + clampedEvaluation * 10;
 
   const lastMove =
     getLastMove();
 
-  // ========================================
-  // RENDER
-  // ========================================
+  // =========================
+  // UI
+  // =========================
 
   return (
     <div className="app">
-      <h1>
-        ♟ Chess Analyzer
-      </h1>
+      <h1>♟ Chess Analyzer</h1>
 
       <div className="game-area">
 
-        {/* Evaluation Bar */}
+        {/* =========================
+            EVALUATION BAR
+        ========================= */}
 
         <div className="evaluation-container">
           <div className="evaluation-bar">
             <div
               className="evaluation-white"
               style={{
-                height:
-                  `${whiteHeight}%`,
+                height: `${whiteHeight}%`,
               }}
             />
 
@@ -1221,26 +979,20 @@ function App() {
             {evaluation >= 0
               ? "+"
               : ""}
-            {evaluation.toFixed(
-              1
-            )}
+            {evaluation.toFixed(1)}
           </div>
         </div>
 
-        {/* Board */}
+        {/* =========================
+            BOARD
+        ========================= */}
 
         <div>
           <div className="board">
             {board.map(
-              (
-                row,
-                rowIndex
-              ) =>
+              (row, rowIndex) =>
                 row.map(
-                  (
-                    piece,
-                    colIndex
-                  ) => {
+                  (piece, colIndex) => {
                     const square =
                       squareName(
                         rowIndex,
@@ -1264,10 +1016,12 @@ function App() {
 
                     const isLastMove =
                       lastMove &&
-                      (lastMove.from ===
-                        square ||
+                      (
+                        lastMove.from ===
+                          square ||
                         lastMove.to ===
-                          square);
+                          square
+                      );
 
                     return (
                       <div
@@ -1321,7 +1075,9 @@ function App() {
             )}
           </div>
 
-          {/* Undo / Redo */}
+          {/* =========================
+              UNDO / REDO
+          ========================= */}
 
           <div className="controls">
             <button
@@ -1348,7 +1104,9 @@ function App() {
             </button>
           </div>
 
-          {/* Previous / Next */}
+          {/* =========================
+              PREVIOUS / NEXT
+          ========================= */}
 
           <div className="controls">
             <button
@@ -1408,12 +1166,12 @@ function App() {
           )}
         </div>
 
-        {/* Move History */}
+        {/* =========================
+            MOVE HISTORY
+        ========================= */}
 
         <div className="move-history">
-          <h2>
-            Move History
-          </h2>
+          <h2>Move History</h2>
 
           <div className="variation-help">
             Right-click a move for
@@ -1427,25 +1185,22 @@ function App() {
                 No moves yet
               </p>
             ) : (
-              renderMoveTree(
-                "root"
-              )
+              renderMoveTree("root")
             )}
           </div>
         </div>
       </div>
 
-      {/* Context Menu */}
+      {/* =========================
+          RIGHT CLICK MENU
+      ========================= */}
 
       {contextMenu && (
         <div
           className="variation-context-menu"
           style={{
-            left:
-              `${contextMenu.x}px`,
-
-            top:
-              `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
           }}
           onClick={(event) =>
             event.stopPropagation()
@@ -1456,8 +1211,7 @@ function App() {
           ]?.parentId &&
             tree[
               tree[
-                contextMenu
-                  .nodeId
+                contextMenu.nodeId
               ].parentId
             ]?.children.indexOf(
               contextMenu.nodeId
@@ -1478,16 +1232,14 @@ function App() {
           ]?.parentId &&
             tree[
               tree[
-                contextMenu
-                  .nodeId
+                contextMenu.nodeId
               ].parentId
             ]?.children.indexOf(
               contextMenu.nodeId
             ) === 0 &&
             tree[
               tree[
-                contextMenu
-                  .nodeId
+                contextMenu.nodeId
               ].parentId
             ]?.children.length >
               1 && (
@@ -1515,7 +1267,9 @@ function App() {
         </div>
       )}
 
-      {/* Promotion Popup */}
+      {/* =========================
+          PROMOTION
+      ========================= */}
 
       {promotion && (
         <div className="promotion-overlay">
