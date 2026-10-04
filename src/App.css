@@ -1088,3 +1088,19 @@ button {
   color: #999999;
   font-size: 12px;
 }
+.move-classification {
+  margin-left: 5px;
+  font-weight: 800;
+}
+
+.move-classification.blunder {
+  color: #ff3b30;
+}
+
+.move-classification.mistake {
+  color: #ffd60a;
+}
+
+.move-classification.great {
+  color: #30d158;
+}

@@ -35,7 +35,7 @@ function classifyMove(loss) {
     };
   }
 
-  if (loss >= 1.0) {
+  if (loss >= 0.8) {
     return {
       label: "Mistake",
       symbol: "?",
@@ -43,11 +43,11 @@ function classifyMove(loss) {
     };
   }
 
-  if (loss >= 0.5) {
+  if (loss <= 0.2) {
     return {
-      label: "Inaccuracy",
-      symbol: "?!",
-      className: "inaccuracy",
+      label: "Great Move",
+      symbol: "!",
+      className: "great",
     };
   }
 
@@ -220,14 +220,14 @@ addEvaluationNodes("root");
       let score = null;
 
       const cpMatch =
-        message.match(/score cp (-?\d+)/);
+        message.match(/score cp (-?\\d+)/);
 
       if (cpMatch) {
         score =
           parseInt(cpMatch[1], 10) / 100;
       } else {
         const mateMatch =
-          message.match(/score mate (-?\d+)/);
+          message.match(/score mate (-?\\d+)/);
 
         if (mateMatch) {
           const mateIn =
@@ -249,16 +249,12 @@ addEvaluationNodes("root");
         queuedPGN &&
         pgnAnalysisActiveRef.current
       ) {
-        // Keep the latest Stockfish score while it is
-        // searching this PGN position.
         if (score !== null) {
           const queuedGame =
             new Chess(queuedPGN.fen);
 
           let whiteScore = score;
 
-          // Stockfish reports score from the side-to-move
-          // perspective. Convert it to White's perspective.
           if (queuedGame.turn() === "b") {
             whiteScore = -whiteScore;
           }
@@ -267,33 +263,72 @@ addEvaluationNodes("root");
             whiteScore;
         }
 
-        // Do NOT finish the PGN position on "info score".
-        // Wait for Stockfish's "bestmove".
         if (message.startsWith("bestmove")) {
           const finalScore =
             pgnAnalysisScoreRef.current;
 
           if (finalScore !== null) {
-            setTree((oldTree) => {
-              const node =
-                oldTree[queuedPGN.nodeId];
+            // First analyze the position BEFORE the move.
+            if (queuedPGN.phase === "before") {
+              queuedPGN.beforeEvaluation =
+                finalScore;
 
-              if (!node) {
-                return oldTree;
+              pgnAnalysisScoreRef.current = null;
+              queuedPGN.phase = "after";
+
+              worker.postMessage("stop");
+              worker.postMessage(
+                `position fen ${queuedPGN.afterFen}`
+              );
+              worker.postMessage("go depth 12");
+
+              return;
+            }
+
+            // Then analyze the position AFTER the move.
+            if (queuedPGN.phase === "after") {
+              const before =
+                queuedPGN.beforeEvaluation;
+
+              const after =
+                finalScore;
+
+              let loss;
+
+              if (queuedPGN.color === "w") {
+                loss = before - after;
+              } else {
+                loss = after - before;
               }
 
-              return {
-                ...oldTree,
-                [queuedPGN.nodeId]: {
-                  ...node,
-                  evaluationAfter:
-                    finalScore,
-                  analyzing: false,
-                },
-              };
-            });
+              loss = Math.max(0, loss);
 
-            setEvaluation(finalScore);
+              const classification =
+                classifyMove(loss);
+
+              setTree((oldTree) => {
+                const node =
+                  oldTree[queuedPGN.nodeId];
+
+                if (!node) {
+                  return oldTree;
+                }
+
+                return {
+                  ...oldTree,
+                  [queuedPGN.nodeId]: {
+                    ...node,
+                    evaluationBefore: before,
+                    evaluationAfter: after,
+                    loss,
+                    classification,
+                    analyzing: false,
+                  },
+                };
+              });
+
+              setEvaluation(after);
+            }
           }
 
           pgnAnalysisQueueRef.current.shift();
@@ -544,7 +579,8 @@ function startNextPGNAnalysis() {
     return;
   }
 
-  const item = pgnAnalysisQueueRef.current[0];
+  const item =
+    pgnAnalysisQueueRef.current[0];
 
   if (!item) {
     pgnAnalysisActiveRef.current = false;
@@ -553,9 +589,13 @@ function startNextPGNAnalysis() {
 
   pgnAnalysisActiveRef.current = true;
   pgnAnalysisScoreRef.current = null;
+  item.phase = "before";
+  item.beforeEvaluation = null;
 
   worker.postMessage("stop");
-  worker.postMessage(`position fen ${item.fen}`);
+  worker.postMessage(
+    `position fen ${item.beforeFen}`
+  );
   worker.postMessage("go depth 12");
 }
 
@@ -643,6 +683,11 @@ function handlePGNImport(event) {
         analysisQueue.push({
           nodeId,
           fen: afterFen,
+          beforeFen,
+          afterFen,
+          color: move.color,
+          phase: "before",
+          beforeEvaluation: null,
         });
 
         parentId = nodeId;
