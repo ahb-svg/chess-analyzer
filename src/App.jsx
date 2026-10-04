@@ -400,67 +400,158 @@ function App() {
     );
   }
 
-  // =====================================================
-  // UNDO
-  // =====================================================
+// =====================================================
+// UNDO
+// =====================================================
 
-  function handleUndo() {
-    if (!currentNode.parentId) {
-      return;
-    }
-
-    const parentId =
-      currentNode.parentId;
-
-    setRedoStack((old) => [
-      ...old,
-      currentNodeId,
-    ]);
-
-    setCurrentNodeId(parentId);
-
-    setSelectedSquare(null);
-    setPromotion(null);
-
-    pendingMoveRef.current = null;
+function handleUndo() {
+  if (!currentNode.parentId) {
+    return;
   }
 
-  // =====================================================
-  // REDO
-  // =====================================================
+  const parentId = currentNode.parentId;
 
-  function handleRedo() {
-    if (redoStack.length === 0) {
+  // Find the position of the current node
+  const parentNode = tree[parentId];
+
+  if (!parentNode) {
+    return;
+  }
+
+  const childIndex =
+    parentNode.children.indexOf(currentNodeId);
+
+  // Collect the whole subtree so Redo can restore it
+  const removedNodes = {};
+
+  function collectSubtree(nodeId) {
+    const node = tree[nodeId];
+
+    if (!node) {
       return;
     }
 
-    const nextId =
-      redoStack[
-        redoStack.length - 1
-      ];
+    removedNodes[nodeId] = node;
 
-    if (!tree[nextId]) {
-      setRedoStack([]);
-      return;
-    }
+    node.children.forEach((childId) => {
+      collectSubtree(childId);
+    });
+  }
 
-    setRedoStack((old) =>
-      old.slice(0, -1)
+  collectSubtree(currentNodeId);
+
+  // Save removed move for REDO
+  setRedoStack((old) => [
+    ...old,
+    {
+      rootId: currentNodeId,
+      parentId,
+      childIndex,
+      nodes: removedNodes,
+    },
+  ]);
+
+  // Remove current node from the tree
+  setTree((oldTree) => {
+    const newTree = {
+      ...oldTree,
+    };
+
+    const newParent = {
+      ...newTree[parentId],
+      children: [
+        ...newTree[parentId].children,
+      ],
+    };
+
+    newParent.children.splice(
+      childIndex,
+      1
     );
 
-    setUndoStack((old) => [
-      ...old,
-      currentNodeId,
-    ]);
+    newTree[parentId] = newParent;
 
-    setCurrentNodeId(nextId);
+    // Delete the whole removed subtree
+    Object.keys(removedNodes).forEach((id) => {
+      delete newTree[id];
+    });
 
-    setSelectedSquare(null);
-    setPromotion(null);
+    return newTree;
+  });
 
-    pendingMoveRef.current = null;
+  // Go back to parent position
+  setCurrentNodeId(parentId);
+
+  setSelectedSquare(null);
+  setPromotion(null);
+
+  pendingMoveRef.current = null;
+}
+
+
+// =====================================================
+// REDO
+// =====================================================
+
+function handleRedo() {
+  if (redoStack.length === 0) {
+    return;
   }
 
+  const redoItem =
+    redoStack[redoStack.length - 1];
+
+  if (
+    !redoItem ||
+    !tree[redoItem.parentId]
+  ) {
+    setRedoStack([]);
+    return;
+  }
+
+  // Restore the removed nodes
+  setTree((oldTree) => {
+    const newTree = {
+      ...oldTree,
+      ...redoItem.nodes,
+    };
+
+    const parentNode = {
+      ...newTree[redoItem.parentId],
+      children: [
+        ...newTree[redoItem.parentId]
+          .children,
+      ],
+    };
+
+    // Put the move back in its original position
+    parentNode.children.splice(
+      redoItem.childIndex,
+      0,
+      redoItem.rootId
+    );
+
+    newTree[redoItem.parentId] =
+      parentNode;
+
+    return newTree;
+  });
+
+  // Remove this item from redo stack
+  setRedoStack((old) =>
+    old.slice(0, -1)
+  );
+
+  // Go to restored move
+  setCurrentNodeId(
+    redoItem.rootId
+  );
+
+  setSelectedSquare(null);
+  setPromotion(null);
+
+  pendingMoveRef.current = null;
+}
   // =====================================================
   // MAKE MOVE
   // =====================================================
