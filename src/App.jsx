@@ -296,7 +296,7 @@ function App() {
     worker.postMessage(
       `position fen ${currentNode.fen}`
     );
-
+    console.log("ANALYZING FEN:", currentNode.fen);
     worker.postMessage("go depth 12");
   }, [
     currentNodeId,
@@ -501,17 +501,21 @@ function handlePGNImport(event) {
 
       setTree(newTree);
 
-      // Show the final position
-      setCurrentNodeId(parentId);
+// Show the final position
+setCurrentNodeId(parentId);
 
-      // Clear undo / redo history
-      setUndoStack([]);
-      setRedoStack([]);
+// Clear undo / redo history
+setUndoStack([]);
+setRedoStack([]);
 
-      setSelectedSquare(null);
-      setPromotion(null);
+// Clear old evaluation
+setEvaluation(0);
 
-      pendingMoveRef.current = null;
+setSelectedSquare(null);
+setPromotion(null);
+
+pendingMoveRef.current = null;
+
 
       alert(
         `PGN loaded successfully!\n\n${moves.length} moves imported.`
