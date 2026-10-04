@@ -113,6 +113,7 @@ function App() {
   const pendingMoveRef = useRef(null);
   const pgnAnalysisQueueRef = useRef([]);
   const pgnAnalysisActiveRef = useRef(false);
+  const pgnAnalysisScoreRef = useRef(null);
 
   // =====================================================
   // UNDO / REDO
@@ -219,14 +220,14 @@ addEvaluationNodes("root");
       let score = null;
 
       const cpMatch =
-        message.match(/score cp (-?\d+)/);
+        message.match(/score cp (-?\\d+)/);
 
       if (cpMatch) {
         score =
           parseInt(cpMatch[1], 10) / 100;
       } else {
         const mateMatch =
-          message.match(/score mate (-?\d+)/);
+          message.match(/score mate (-?\\d+)/);
 
         if (mateMatch) {
           const mateIn =
@@ -237,50 +238,86 @@ addEvaluationNodes("root");
         }
       }
 
-      if (score === null) {
-        return;
-      }
+      // =================================================
+      // PGN ANALYSIS
+      // =================================================
 
       const queuedPGN =
         pgnAnalysisQueueRef.current[0];
 
-      if (queuedPGN && pgnAnalysisActiveRef.current) {
-        const queuedGame = new Chess(queuedPGN.fen);
+      if (
+        queuedPGN &&
+        pgnAnalysisActiveRef.current
+      ) {
+        // Keep the latest Stockfish score while it is
+        // searching this PGN position.
+        if (score !== null) {
+          const queuedGame =
+            new Chess(queuedPGN.fen);
 
-        if (queuedGame.turn() === "b") {
-          score = -score;
-        }
+          let whiteScore = score;
 
-        setTree((oldTree) => {
-          const node = oldTree[queuedPGN.nodeId];
-
-          if (!node) {
-            return oldTree;
+          // Stockfish reports score from the side-to-move
+          // perspective. Convert it to White's perspective.
+          if (queuedGame.turn() === "b") {
+            whiteScore = -whiteScore;
           }
 
-          return {
-            ...oldTree,
-            [queuedPGN.nodeId]: {
-              ...node,
-              evaluationAfter: score,
-              analyzing: false,
-            },
-          };
-        });
-
-        setEvaluation(score);
-
-        pgnAnalysisQueueRef.current.shift();
-
-        if (pgnAnalysisQueueRef.current.length > 0) {
-          setTimeout(() => {
-            startNextPGNAnalysis();
-          }, 0);
-        } else {
-          pgnAnalysisActiveRef.current = false;
-          console.log("PGN analysis complete!");
+          pgnAnalysisScoreRef.current =
+            whiteScore;
         }
 
+        // Do NOT finish the PGN position on "info score".
+        // Wait for Stockfish's "bestmove".
+        if (message.startsWith("bestmove")) {
+          const finalScore =
+            pgnAnalysisScoreRef.current;
+
+          if (finalScore !== null) {
+            setTree((oldTree) => {
+              const node =
+                oldTree[queuedPGN.nodeId];
+
+              if (!node) {
+                return oldTree;
+              }
+
+              return {
+                ...oldTree,
+                [queuedPGN.nodeId]: {
+                  ...node,
+                  evaluationAfter:
+                    finalScore,
+                  analyzing: false,
+                },
+              };
+            });
+
+            setEvaluation(finalScore);
+          }
+
+          pgnAnalysisQueueRef.current.shift();
+          pgnAnalysisScoreRef.current = null;
+
+          if (
+            pgnAnalysisQueueRef.current.length > 0
+          ) {
+            setTimeout(() => {
+              startNextPGNAnalysis();
+            }, 0);
+          } else {
+            pgnAnalysisActiveRef.current = false;
+            console.log(
+              "PGN analysis complete!"
+            );
+          }
+        }
+
+        return;
+      }
+
+      // No score yet for the normal current-position analysis.
+      if (score === null) {
         return;
       }
 
@@ -360,6 +397,7 @@ addEvaluationNodes("root");
     return () => {
       pgnAnalysisQueueRef.current = [];
       pgnAnalysisActiveRef.current = false;
+      pgnAnalysisScoreRef.current = null;
       worker.terminate();
       stockfishRef.current = null;
     };
@@ -514,6 +552,7 @@ function startNextPGNAnalysis() {
   }
 
   pgnAnalysisActiveRef.current = true;
+  pgnAnalysisScoreRef.current = null;
 
   worker.postMessage("stop");
   worker.postMessage(`position fen ${item.fen}`);
@@ -611,6 +650,7 @@ function handlePGNImport(event) {
 
       pgnAnalysisQueueRef.current = analysisQueue;
       pgnAnalysisActiveRef.current = false;
+      pgnAnalysisScoreRef.current = null;
 
       // Detect the opening of the imported PGN.
       const importedOpening = detectOpening(
@@ -639,6 +679,7 @@ function handlePGNImport(event) {
       console.error("PGN loading error:", error);
       pgnAnalysisQueueRef.current = [];
       pgnAnalysisActiveRef.current = false;
+      pgnAnalysisScoreRef.current = null;
 
       alert(
         "Invalid PGN file.\n\nPlease check the PGN and try again."
