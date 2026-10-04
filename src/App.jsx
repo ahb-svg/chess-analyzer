@@ -140,6 +140,29 @@ function App() {
     gameRef.current = game;
   }, [game]);
 
+  const evaluationGraphData = [];
+
+function addEvaluationNodes(nodeId) {
+  const node = tree[nodeId];
+
+  if (!node) {
+    return;
+  }
+
+  if (node.move && node.evaluationAfter !== null) {
+    evaluationGraphData.push({
+      move: node.move.moveNumber,
+      evaluation: node.evaluationAfter,
+    });
+  }
+
+  node.children.forEach((childId) => {
+    addEvaluationNodes(childId);
+  });
+}
+
+addEvaluationNodes("root");
+
   useEffect(() => {
     evaluationRef.current = evaluation;
   }, [evaluation]);
@@ -199,6 +222,30 @@ function App() {
       }
 
       setEvaluation(score);
+
+      setEvaluationHistory((old) => {
+  const moveNumber = currentNode.move?.moveNumber ?? 0;
+
+  const existing = old.find(
+    (item) => item.moveNumber === moveNumber
+  );
+
+  if (existing) {
+    return old.map((item) =>
+      item.moveNumber === moveNumber
+        ? { ...item, evaluation: score }
+        : item
+    );
+  }
+
+  return [
+    ...old,
+    {
+      moveNumber,
+      evaluation: score,
+    },
+  ];
+});
 
       // =================================================
       // CLASSIFY MOVE
@@ -1510,6 +1557,55 @@ function handleRedo() {
     className="pgn-file-input"
   />
 </div>
+
+<div className="evaluation-graph">
+  <h3>Game Evaluation</h3>
+
+  {evaluationGraphData.length > 0 ? (
+    <div className="graph-area">
+      <svg
+  className="evaluation-line"
+  viewBox="0 0 100 100"
+  preserveAspectRatio="none"
+>
+  <polyline
+    points={evaluationGraphData
+      .map((item, index) => {
+        const maxMove =
+          Math.max(
+            1,
+            evaluationGraphData.length - 1
+          );
+
+        const x =
+          (index / maxMove) * 100;
+
+        const clampedEvaluation =
+          Math.max(
+            -5,
+            Math.min(5, item.evaluation)
+          );
+
+        const y =
+          50 - clampedEvaluation * 10;
+
+        return `${x},${y}`;
+      })
+      .join(" ")}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    vectorEffect="non-scaling-stroke"
+  />
+</svg>
+    </div>
+  ) : (
+    <div className="graph-empty">
+      No evaluation data yet
+    </div>
+  )}
+</div>
+
           {/* =============================================
               STATUS
           ============================================= */}

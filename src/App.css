@@ -992,3 +992,72 @@ button {
 .pgn-button:active {
   transform: scale(0.98);
 }
+
+/* ================================
+   FULL GAME EVALUATION GRAPH
+   ================================ */
+
+.evaluation-graph {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: #222222;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+}
+
+.evaluation-graph h3 {
+  margin: 0 0 10px 0;
+  color: #d5d5d5;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.graph-area {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  overflow: hidden;
+  background: #181818;
+  border-radius: 6px;
+  border: 1px solid #333333;
+}
+
+.graph-area::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: #666666;
+}
+
+.graph-point {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translate(-50%, 50%);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.graph-empty {
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #777777;
+  font-size: 13px;
+}
+
+.evaluation-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: #ffffff;
+  pointer-events: none;
+}
