@@ -1127,3 +1127,31 @@ button {
   transform: translateY(-50%);
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
 }
+
+/* ================================= */
+/* BOARD WRAPPER + FIRST 3 ARROWS */
+/* ================================= */
+
+.board-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.board-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.board-arrow-line {
+  stroke: #e53935;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.45));
+}

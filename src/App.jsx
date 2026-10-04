@@ -145,50 +145,30 @@ function App() {
 
   const board = game.board();
 
-  useEffect(() => {
-    gameRef.current = game;
-  }, [game]);
-
   // =====================================================
   // FIRST 3 MOVE ARROWS
   // =====================================================
 
-  function getFirstThreeMoveArrows() {
-    const arrows = [];
-    let nodeId = tree.root.children[0];
+  const firstThreeMoves = [
+    { from: "e2", to: "e4" },
+    { from: "e7", to: "e5" },
+    { from: "g1", to: "f3" },
+  ];
 
-    while (nodeId && arrows.length < 3) {
-      const node = tree[nodeId];
-
-      if (!node || !node.move) {
-        break;
-      }
-
-      arrows.push({
-        from: node.move.from,
-        to: node.move.to,
-      });
-
-      // Follow the main line.
-      nodeId = node.children?.[0];
-    }
-
-    return arrows;
-  }
-
-  function squareToArrowPoint(square) {
+  function getArrowPoint(square) {
     const files = "abcdefgh";
     const file = files.indexOf(square[0]);
-    const rank = Number(square[1]);
+    const rank = parseInt(square[1], 10);
 
     return {
-      x: file + 0.5,
-      y: 8 - rank + 0.5,
+      x: file * 100 + 50,
+      y: (8 - rank) * 100 + 50,
     };
   }
 
-  const firstThreeMoveArrows =
-    getFirstThreeMoveArrows();
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
 
   const evaluationGraphData = [];
 
@@ -850,25 +830,26 @@ function handleRedo() {
         newGame.move(moveData);
 
       if (!move) {
+        const openingMoves = [];
+
+let nodeId = currentNodeId;
+
+while (nodeId && tree[nodeId]) {
+  const node = tree[nodeId];
+
+  if (node.move?.san) {
+    openingMoves.unshift(node.move.san);
+  }
+
+  nodeId = node.parentId;
+}
+
+openingMoves.push(move.san);
+
+updateOpeningFromMoves(openingMoves);
+
         return;
       }
-
-      // Detect the opening from the moves played so far.
-      const openingMoves = [];
-      let openingNodeId = currentNodeId;
-
-      while (openingNodeId && tree[openingNodeId]) {
-        const node = tree[openingNodeId];
-
-        if (node.move?.san) {
-          openingMoves.unshift(node.move.san);
-        }
-
-        openingNodeId = node.parentId;
-      }
-
-      openingMoves.push(move.san);
-      updateOpeningFromMoves(openingMoves);
 
       // =================================================
       // EXISTING CHILD
@@ -1825,10 +1806,8 @@ function updateOpeningFromMoves(moves) {
         =============================================== */}
 
         <div className="board-section">
-          <div
-            className="board"
-            style={{ position: "relative" }}
-          >
+          <div className="board-wrapper">
+            <div className="board">
             {board.map(
               (row, rowIndex) =>
                 row.map(
@@ -1916,71 +1895,52 @@ function updateOpeningFromMoves(moves) {
                   }
                 )
             )}
+            </div>
 
-            {/* =========================================
+            {/* =============================================
                 FIRST 3 MOVE ARROWS
-            ========================================= */}
-            {firstThreeMoveArrows.length > 0 && (
+            ============================================= */}
+
+            {currentNodeId === "root" && (
               <svg
-                className="move-arrows"
-                viewBox="0 0 8 8"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  zIndex: 5,
-                  pointerEvents: "none",
-                  overflow: "visible",
-                }}
+                className="board-arrows"
+                viewBox="0 0 800 800"
                 preserveAspectRatio="none"
                 aria-hidden="true"
               >
                 <defs>
                   <marker
-                    id="first-move-arrowhead"
+                    id="first-move-arrow-head"
                     viewBox="0 0 10 10"
                     refX="8"
                     refY="5"
-                    markerWidth="5"
-                    markerHeight="5"
+                    markerWidth="7"
+                    markerHeight="7"
                     orient="auto-start-reverse"
                   >
                     <path
                       d="M 0 0 L 10 5 L 0 10 z"
-                      fill="currentColor"
+                      fill="#e53935"
                     />
                   </marker>
                 </defs>
 
-                {firstThreeMoveArrows.map(
-                  (arrow, index) => {
-                    const start =
-                      squareToArrowPoint(
-                        arrow.from
-                      );
-                    const end =
-                      squareToArrowPoint(
-                        arrow.to
-                      );
+                {firstThreeMoves.map((move, index) => {
+                  const start = getArrowPoint(move.from);
+                  const end = getArrowPoint(move.to);
 
-                    return (
-                      <line
-                        key={`${arrow.from}-${arrow.to}-${index}`}
-                        x1={start.x}
-                        y1={start.y}
-                        x2={end.x}
-                        y2={end.y}
-                        className={`first-move-arrow arrow-${index + 1}`}
-                        markerEnd="url(#first-move-arrowhead)"
-                        stroke="currentColor"
-                        strokeWidth="0.11"
-                        strokeLinecap="round"
-                        opacity="0.9"
-                      />
-                    );
-                  }
-                )}
+                  return (
+                    <line
+                      key={`${move.from}-${move.to}-${index}`}
+                      x1={start.x}
+                      y1={start.y}
+                      x2={end.x}
+                      y2={end.y}
+                      className="board-arrow-line"
+                      markerEnd="url(#first-move-arrow-head)"
+                    />
+                  );
+                })}
               </svg>
             )}
           </div>
