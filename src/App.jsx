@@ -104,6 +104,8 @@ function App() {
   const gameRef = useRef(null);
   const evaluationRef = useRef(0);
   const pendingMoveRef = useRef(null);
+  const pgnAnalysisQueueRef = useRef([]);
+  const pgnAnalysisActiveRef = useRef(false);
 
   // =====================================================
   // UNDO / REDO
@@ -215,37 +217,54 @@ addEvaluationNodes("root");
         return;
       }
 
-      if (
-        gameRef.current?.turn() === "b"
-      ) {
+      const queuedPGN =
+        pgnAnalysisQueueRef.current[0];
+
+      if (queuedPGN && pgnAnalysisActiveRef.current) {
+        const queuedGame = new Chess(queuedPGN.fen);
+
+        if (queuedGame.turn() === "b") {
+          score = -score;
+        }
+
+        setTree((oldTree) => {
+          const node = oldTree[queuedPGN.nodeId];
+
+          if (!node) {
+            return oldTree;
+          }
+
+          return {
+            ...oldTree,
+            [queuedPGN.nodeId]: {
+              ...node,
+              evaluationAfter: score,
+              analyzing: false,
+            },
+          };
+        });
+
+        setEvaluation(score);
+
+        pgnAnalysisQueueRef.current.shift();
+
+        if (pgnAnalysisQueueRef.current.length > 0) {
+          setTimeout(() => {
+            startNextPGNAnalysis();
+          }, 0);
+        } else {
+          pgnAnalysisActiveRef.current = false;
+          console.log("PGN analysis complete!");
+        }
+
+        return;
+      }
+
+      if (gameRef.current?.turn() === "b") {
         score = -score;
       }
 
       setEvaluation(score);
-
-      setEvaluationHistory((old) => {
-  const moveNumber = currentNode.move?.moveNumber ?? 0;
-
-  const existing = old.find(
-    (item) => item.moveNumber === moveNumber
-  );
-
-  if (existing) {
-    return old.map((item) =>
-      item.moveNumber === moveNumber
-        ? { ...item, evaluation: score }
-        : item
-    );
-  }
-
-  return [
-    ...old,
-    {
-      moveNumber,
-      evaluation: score,
-    },
-  ];
-});
 
       // =================================================
       // CLASSIFY MOVE
@@ -315,6 +334,8 @@ addEvaluationNodes("root");
     worker.postMessage("isready");
 
     return () => {
+      pgnAnalysisQueueRef.current = [];
+      pgnAnalysisActiveRef.current = false;
       worker.terminate();
       stockfishRef.current = null;
     };
@@ -326,6 +347,13 @@ addEvaluationNodes("root");
 
   useEffect(() => {
     if (!engineReady) {
+      return;
+    }
+
+    if (pgnAnalysisQueueRef.current.length > 0) {
+      if (!pgnAnalysisActiveRef.current) {
+        startNextPGNAnalysis();
+      }
       return;
     }
 
@@ -343,7 +371,6 @@ addEvaluationNodes("root");
     worker.postMessage(
       `position fen ${currentNode.fen}`
     );
-    console.log("ANALYZING FEN:", currentNode.fen);
     worker.postMessage("go depth 12");
   }, [
     currentNodeId,
@@ -448,6 +475,27 @@ addEvaluationNodes("root");
   }
 // PGN Inport
 
+function startNextPGNAnalysis() {
+  const worker = stockfishRef.current;
+
+  if (!worker) {
+    return;
+  }
+
+  const item = pgnAnalysisQueueRef.current[0];
+
+  if (!item) {
+    pgnAnalysisActiveRef.current = false;
+    return;
+  }
+
+  pgnAnalysisActiveRef.current = true;
+
+  worker.postMessage("stop");
+  worker.postMessage(`position fen ${item.fen}`);
+  worker.postMessage("go depth 12");
+}
+
 function handlePGNImport(event) {
   const file = event.target.files?.[0];
 
@@ -461,15 +509,9 @@ function handlePGNImport(event) {
     const pgn = String(reader.result || "");
 
     try {
-      // ============================================
-      // LOAD PGN
-      // ============================================
-
       const pgnGame = new Chess();
-
       pgnGame.loadPgn(pgn);
 
-      // Get all moves from the PGN
       const moves = pgnGame.history({
         verbose: true,
       });
@@ -477,10 +519,6 @@ function handlePGNImport(event) {
       if (moves.length === 0) {
         throw new Error("No moves found in PGN.");
       }
-
-      // ============================================
-      // REBUILD OUR MOVE TREE
-      // ============================================
 
       const replayGame = new Chess();
 
@@ -494,22 +532,25 @@ function handlePGNImport(event) {
         },
       };
 
+      const analysisQueue = [];
       let parentId = "root";
 
       moves.forEach((move, index) => {
-        // Play the move to get the resulting FEN
+        const beforeFen = replayGame.fen();
+
         const playedMove = replayGame.move({
           from: move.from,
           to: move.to,
           promotion: move.promotion,
         });
 
+        const afterFen = replayGame.fen();
         const nodeId = `pgn-${Date.now()}-${index}`;
 
         const node = {
           id: nodeId,
-          parentId: parentId,
-          fen: replayGame.fen(),
+          parentId,
+          fen: afterFen,
 
           move: {
             from: move.from,
@@ -517,59 +558,56 @@ function handlePGNImport(event) {
             promotion: move.promotion,
             san: playedMove.san,
             color: move.color,
-            moveNumber:
-              move.color === "w"
-                ? Math.ceil((index + 1) / 2)
-                : Math.ceil((index + 1) / 2),
+            moveNumber: Math.ceil((index + 1) / 2),
           },
 
           children: [],
-
           evaluationBefore: null,
           evaluationAfter: null,
           loss: null,
           classification: null,
-          analyzing: false,
+          analyzing: true,
+          beforeFen,
+          afterFen,
         };
 
         newTree[nodeId] = node;
-
         newTree[parentId].children = [
           ...newTree[parentId].children,
           nodeId,
         ];
 
+        analysisQueue.push({
+          nodeId,
+          fen: afterFen,
+        });
+
         parentId = nodeId;
       });
 
-      // ============================================
-      // UPDATE APP
-      // ============================================
+      pgnAnalysisQueueRef.current = analysisQueue;
+      pgnAnalysisActiveRef.current = false;
 
       setTree(newTree);
+      setCurrentNodeId(parentId);
+      setUndoStack([]);
+      setRedoStack([]);
+      setEvaluation(0);
+      setSelectedSquare(null);
+      setPromotion(null);
+      pendingMoveRef.current = null;
 
-// Show the final position
-setCurrentNodeId(parentId);
-
-// Clear undo / redo history
-setUndoStack([]);
-setRedoStack([]);
-
-// Clear old evaluation
-setEvaluation(0);
-
-setSelectedSquare(null);
-setPromotion(null);
-
-pendingMoveRef.current = null;
-
+      if (engineReady) {
+        startNextPGNAnalysis();
+      }
 
       alert(
-        `PGN loaded successfully!\n\n${moves.length} moves imported.`
+        `PGN loaded successfully!\n\n${moves.length} moves imported.\n\nStockfish analysis started.`
       );
-
     } catch (error) {
       console.error("PGN loading error:", error);
+      pgnAnalysisQueueRef.current = [];
+      pgnAnalysisActiveRef.current = false;
 
       alert(
         "Invalid PGN file.\n\nPlease check the PGN and try again."
@@ -578,10 +616,9 @@ pendingMoveRef.current = null;
   };
 
   reader.readAsText(file);
-
-  // Allow selecting the same PGN file again
   event.target.value = "";
 }
+
 // =====================================================
 // UNDO
 // =====================================================
