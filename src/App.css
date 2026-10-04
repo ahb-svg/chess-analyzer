@@ -6,13 +6,19 @@
   box-sizing: border-box;
 }
 
+html {
+  background: #181818;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+
   font-family:
     Arial,
     Helvetica,
     sans-serif;
+
   background: #181818;
   color: white;
 }
@@ -23,19 +29,33 @@ button {
 
 
 /* =========================================================
-   MAIN APP
+   APP
 ========================================================= */
 
 .app {
   min-height: 100vh;
+
   padding: 20px;
-  background: #181818;
+
+  background:
+    radial-gradient(
+      circle at top,
+      #252525 0%,
+      #181818 55%
+    );
+
+  color: white;
 }
 
 .app h1 {
-  text-align: center;
   margin: 0 0 25px;
+
+  text-align: center;
+
   font-size: 30px;
+  font-weight: 700;
+
+  letter-spacing: -0.5px;
 }
 
 
@@ -45,14 +65,29 @@ button {
 
 .game-area {
   display: flex;
+
   justify-content: center;
   align-items: flex-start;
-  gap: 25px;
+
+  gap: 22px;
 }
 
 
 /* =========================================================
-   CHESS BOARD
+   BOARD SECTION
+========================================================= */
+
+.board-section {
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+}
+
+
+/* =========================================================
+   BOARD
 ========================================================= */
 
 .board {
@@ -60,14 +95,21 @@ button {
   height: 560px;
 
   display: grid;
+
   grid-template-columns:
     repeat(8, 1fr);
+
   grid-template-rows:
     repeat(8, 1fr);
 
-  border: 3px solid #111;
+  overflow: hidden;
+
+  border: 3px solid #101010;
+
+  border-radius: 4px;
+
   box-shadow:
-    0 10px 30px
+    0 15px 35px
     rgba(0, 0, 0, 0.5);
 }
 
@@ -75,6 +117,7 @@ button {
   position: relative;
 
   display: flex;
+
   justify-content: center;
   align-items: center;
 
@@ -93,7 +136,7 @@ button {
 
 
 /* =========================================================
-   PIECES
+   CHESS PIECES
 ========================================================= */
 
 .white-piece,
@@ -108,7 +151,7 @@ button {
 }
 
 .white-piece {
-  color: white;
+  color: #ffffff;
 
   text-shadow:
     0 2px 2px #000,
@@ -116,7 +159,7 @@ button {
 }
 
 .black-piece {
-  color: #111;
+  color: #111111;
 
   text-shadow:
     0 1px 1px
@@ -131,7 +174,7 @@ button {
 .square.selected {
   box-shadow:
     inset 0 0 0 5px
-    rgba(255, 215, 0, 0.8);
+    rgba(255, 215, 0, 0.85);
 }
 
 
@@ -149,12 +192,8 @@ button {
 
   border-radius: 50%;
 
-  background: rgba(
-    0,
-    0,
-    0,
-    0.35
-  );
+  background:
+    rgba(0, 0, 0, 0.35);
 }
 
 
@@ -170,55 +209,126 @@ button {
 
 
 /* =========================================================
-   CONTROLS
+   ICON NAVIGATION
 ========================================================= */
 
-.controls {
+.notation-controls {
+  width: 100%;
+
   display: flex;
 
   justify-content: center;
+  align-items: center;
 
-  gap: 10px;
+  gap: 7px;
 
-  margin-top: 12px;
+  margin-top: 13px;
+
+  padding: 7px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #292929,
+      #222222
+    );
+
+  border:
+    1px solid #3a3a3a;
+
+  border-radius: 10px;
+
+  box-shadow:
+    0 5px 15px
+    rgba(0, 0, 0, 0.25);
 }
 
-.controls button {
-  border: none;
 
-  padding: 10px 16px;
+/* =========================================================
+   ICON BUTTON
+========================================================= */
+
+.icon-button {
+  width: 46px;
+  height: 40px;
+
+  display: flex;
+
+  justify-content: center;
+  align-items: center;
+
+  border: none;
 
   border-radius: 7px;
 
-  background: #333;
+  background: #333333;
 
-  color: white;
+  color: #d5d5d5;
 
   cursor: pointer;
 
-  font-size: 14px;
+  font-size: 27px;
+
+  line-height: 1;
 
   transition:
-    background 0.2s,
-    transform 0.1s;
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
 }
 
-.controls button:hover:not(
-  :disabled
-) {
-  background: #444;
+.icon-button:hover:not(:disabled) {
+  background: #444444;
+
+  color: #ffffff;
+
+  box-shadow:
+    0 3px 10px
+    rgba(0, 0, 0, 0.25);
+
+  transform:
+    translateY(-1px);
 }
 
-.controls button:active:not(
-  :disabled
-) {
-  transform: scale(0.97);
+.icon-button:active:not(:disabled) {
+  transform:
+    scale(0.93);
 }
 
-.controls button:disabled {
-  opacity: 0.35;
+.icon-button:focus-visible {
+  outline:
+    2px solid #aaa;
+
+  outline-offset: 2px;
+}
+
+.icon-button:disabled {
+  opacity: 0.25;
 
   cursor: not-allowed;
+
+  box-shadow: none;
+
+  transform: none;
+}
+
+
+/* Previous / Next */
+
+.previous-button,
+.next-button {
+  font-size: 34px;
+
+  font-weight: 300;
+}
+
+
+/* Undo / Redo */
+
+.undo-button,
+.redo-button {
+  font-size: 24px;
 }
 
 
@@ -227,16 +337,18 @@ button {
 ========================================================= */
 
 .status {
+  margin: 8px 0 0;
+
   text-align: center;
 
-  margin: 8px 0;
+  color: #aaa;
 
-  color: #bbb;
-
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .check {
+  margin-top: 8px;
+
   text-align: center;
 
   color: #ff5555;
@@ -251,7 +363,6 @@ button {
 
 .evaluation-container {
   width: 55px;
-
   height: 560px;
 
   display: flex;
@@ -259,7 +370,6 @@ button {
   flex-direction: column;
 
   align-items: center;
-
   justify-content: center;
 
   gap: 8px;
@@ -269,16 +379,16 @@ button {
   position: relative;
 
   width: 36px;
-
   height: 500px;
-
-  background: #222;
-
-  border-radius: 4px;
 
   overflow: hidden;
 
-  border: 2px solid #111;
+  background: #222222;
+
+  border:
+    2px solid #111111;
+
+  border-radius: 4px;
 }
 
 .evaluation-black {
@@ -286,7 +396,7 @@ button {
 
   inset: 0;
 
-  background: #222;
+  background: #222222;
 }
 
 .evaluation-white {
@@ -304,57 +414,66 @@ button {
 }
 
 .evaluation-number {
-  font-size: 14px;
-
-  font-weight: bold;
-
   min-width: 45px;
 
   text-align: center;
+
+  font-size: 14px;
+
+  font-weight: bold;
 }
 
 
 /* =========================================================
-   MOVE HISTORY
+   MOVE HISTORY / NOTATION
 ========================================================= */
 
 .move-history {
   width: 360px;
 
   min-height: 560px;
-
   max-height: 650px;
 
   overflow-y: auto;
 
-  background: #222;
+  padding: 18px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #252525,
+      #202020
+    );
+
+  border:
+    1px solid #333333;
 
   border-radius: 10px;
 
-  padding: 18px;
-
   box-shadow:
-    0 10px 30px
+    0 15px 35px
     rgba(0, 0, 0, 0.35);
 }
 
 .move-history h2 {
   margin:
-    0 0 10px;
+    0 0 8px;
 
   font-size: 21px;
 }
 
 .variation-help {
+  margin-bottom: 14px;
+
+  color: #777777;
+
   font-size: 12px;
-
-  color: #888;
-
-  margin-bottom: 15px;
 }
 
 .no-moves {
-  color: #777;
+  margin-top: 30px;
+
+  color: #777777;
 
   text-align: center;
 }
@@ -399,23 +518,9 @@ button {
   width: 100%;
 }
 
-
-/*
-   MAIN LINE
-
-   Main moves stay straight.
-*/
-
 .variation-node.main-variation {
   margin-left: 0 !important;
 }
-
-
-/*
-   SUB VARIATION
-
-   Variations are moved to the right.
-*/
 
 .variation-node.sub-variation {
   margin-left: 28px !important;
@@ -423,31 +528,28 @@ button {
 
 
 /* =========================================================
-   VARIATION "\" SYMBOL
+   VARIATION BRANCH
 ========================================================= */
 
 .variation-branch-symbol {
   position: absolute;
 
   left: -24px;
-
   top: 0;
 
   width: 20px;
-
   height: 34px;
 
   display: flex;
 
+  justify-content: center;
   align-items: center;
 
-  justify-content: center;
+  color: #999999;
 
   font-size: 22px;
 
   font-weight: bold;
-
-  color: #aaa;
 
   line-height: 1;
 
@@ -468,15 +570,16 @@ button {
 
   min-height: 30px;
 
+  padding:
+    5px 7px;
+
   border: none;
 
   border-radius: 5px;
 
-  padding: 5px 7px;
-
   background: transparent;
 
-  color: #ddd;
+  color: #dddddd;
 
   cursor: pointer;
 
@@ -485,22 +588,26 @@ button {
   white-space: nowrap;
 
   transition:
-    background 0.15s,
-    color 0.15s;
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .move-button:hover {
-  background: #333;
+  background: #333333;
 
-  color: white;
+  color: #ffffff;
 }
 
 .move-button.current-move {
   background: #4b6b35;
 
-  color: white;
+  color: #ffffff;
 
   font-weight: bold;
+
+  box-shadow:
+    0 2px 8px
+    rgba(0, 0, 0, 0.25);
 }
 
 
@@ -509,9 +616,9 @@ button {
 ========================================================= */
 
 .move-number {
-  color: #888;
-
   min-width: 30px;
+
+  color: #777777;
 
   text-align: right;
 
@@ -520,39 +627,21 @@ button {
 
 
 /* =========================================================
-   VARIATION LABEL
-========================================================= */
-
-.variation-label {
-  color: #777;
-
-  font-size: 10px;
-
-  margin-left: 3px;
-}
-
-
-/* =========================================================
-   STOCKFISH ANALYZING
+   ANALYSIS
 ========================================================= */
 
 .move-analyzing {
-  color: #888;
+  margin-left: 2px;
+
+  color: #777777;
 
   font-size: 12px;
-
-  margin-left: 2px;
 }
 
-
-/* =========================================================
-   MOVE CLASSIFICATION
-========================================================= */
-
 .move-classification {
-  font-weight: bold;
-
   margin-left: 2px;
+
+  font-weight: bold;
 }
 
 .good {
@@ -573,7 +662,7 @@ button {
 
 
 /* =========================================================
-   RIGHT CLICK CONTEXT MENU
+   RIGHT CLICK MENU
 ========================================================= */
 
 .variation-context-menu {
@@ -587,13 +676,14 @@ button {
 
   background: #292929;
 
-  border: 1px solid #444;
+  border:
+    1px solid #444444;
 
   border-radius: 8px;
 
   box-shadow:
-    0 10px 30px
-    rgba(0, 0, 0, 0.6);
+    0 12px 35px
+    rgba(0, 0, 0, 0.65);
 }
 
 .variation-context-menu button {
@@ -601,24 +691,29 @@ button {
 
   width: 100%;
 
+  padding:
+    9px 10px;
+
   border: none;
 
   border-radius: 5px;
 
-  padding: 9px 10px;
-
-  text-align: left;
-
   background: transparent;
 
-  color: #eee;
+  color: #eeeeee;
 
   cursor: pointer;
 
+  text-align: left;
+
   font-size: 13px;
+
+  transition:
+    background 0.15s ease;
 }
 
-.variation-context-menu button:hover {
+.variation-context-menu
+  button:hover {
   background: #3b3b3b;
 }
 
@@ -634,7 +729,7 @@ button {
 
 
 /* =========================================================
-   PROMOTION OVERLAY
+   PROMOTION
 ========================================================= */
 
 .promotion-overlay {
@@ -647,7 +742,6 @@ button {
   display: flex;
 
   justify-content: center;
-
   align-items: center;
 
   background:
@@ -655,13 +749,13 @@ button {
 }
 
 .promotion-box {
-  background: #252525;
-
-  border-radius: 12px;
+  width: 320px;
 
   padding: 25px;
 
-  width: 320px;
+  background: #252525;
+
+  border-radius: 12px;
 
   text-align: center;
 
@@ -685,48 +779,43 @@ button {
 }
 
 .promotion-options button {
+  display: flex;
+
+  flex-direction: column;
+
+  justify-content: center;
+  align-items: center;
+
+  gap: 5px;
+
+  padding: 12px 5px;
+
   border: none;
 
   border-radius: 8px;
 
-  padding: 12px 5px;
-
-  background: #333;
+  background: #333333;
 
   color: white;
 
   cursor: pointer;
 
-  display: flex;
-
-  flex-direction: column;
-
-  align-items: center;
-
-  gap: 5px;
-
   transition:
-    background 0.2s;
+    background 0.2s ease;
 }
 
 .promotion-options button:hover {
-  background: #444;
+  background: #444444;
 }
 
-.promotion-options button:first-child {
-  font-size: 38px;
+.promotion-piece {
+  font-size: 34px;
 }
 
-.promotion-options button:not(
-  :first-child
-) {
-  font-size: 32px;
-}
+.promotion-label {
+  color: #aaaaaa;
 
-.promotion-options span {
   font-size: 11px;
-
-  color: #aaa;
 }
 
 
@@ -743,13 +832,13 @@ button {
 }
 
 .move-history::-webkit-scrollbar-thumb {
-  background: #555;
+  background: #555555;
 
   border-radius: 10px;
 }
 
 .move-history::-webkit-scrollbar-thumb:hover {
-  background: #777;
+  background: #777777;
 }
 
 
@@ -768,6 +857,7 @@ button {
     max-width: 100%;
   }
 }
+
 
 @media (max-width: 700px) {
   .app {
@@ -795,29 +885,37 @@ button {
   }
 
   .board {
-    width: min(
-      calc(100vw - 60px),
-      500px
-    );
+    width:
+      min(
+        calc(100vw - 60px),
+        500px
+      );
 
-    height: min(
-      calc(100vw - 60px),
-      500px
-    );
+    height:
+      min(
+        calc(100vw - 60px),
+        500px
+      );
   }
 
   .white-piece,
   .black-piece {
-    font-size: clamp(
-      28px,
-      8vw,
-      48px
-    );
+    font-size:
+      clamp(
+        28px,
+        8vw,
+        48px
+      );
   }
 
   .move-history {
     width: 100%;
 
     min-height: 300px;
+  }
+
+  .icon-button {
+    width: 43px;
+    height: 38px;
   }
 }
