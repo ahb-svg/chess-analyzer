@@ -145,27 +145,6 @@ function App() {
 
   const board = game.board();
 
-  // =====================================================
-  // FIRST 3 MOVE ARROWS
-  // =====================================================
-
-  const firstThreeMoves = [
-    { from: "e2", to: "e4" },
-    { from: "e7", to: "e5" },
-    { from: "g1", to: "f3" },
-  ];
-
-  function getArrowPoint(square) {
-    const files = "abcdefgh";
-    const file = files.indexOf(square[0]);
-    const rank = parseInt(square[1], 10);
-
-    return {
-      x: file * 100 + 50,
-      y: (8 - rank) * 100 + 50,
-    };
-  }
-
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
@@ -1806,8 +1785,7 @@ function updateOpeningFromMoves(moves) {
         =============================================== */}
 
         <div className="board-section">
-          <div className="board-wrapper">
-            <div className="board">
+          <div className="board">
             {board.map(
               (row, rowIndex) =>
                 row.map(
@@ -1894,54 +1872,6 @@ function updateOpeningFromMoves(moves) {
                     );
                   }
                 )
-            )}
-            </div>
-
-            {/* =============================================
-                FIRST 3 MOVE ARROWS
-            ============================================= */}
-
-            {currentNodeId === "root" && (
-              <svg
-                className="board-arrows"
-                viewBox="0 0 800 800"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                <defs>
-                  <marker
-                    id="first-move-arrow-head"
-                    viewBox="0 0 10 10"
-                    refX="8"
-                    refY="5"
-                    markerWidth="7"
-                    markerHeight="7"
-                    orient="auto-start-reverse"
-                  >
-                    <path
-                      d="M 0 0 L 10 5 L 0 10 z"
-                      fill="#e53935"
-                    />
-                  </marker>
-                </defs>
-
-                {firstThreeMoves.map((move, index) => {
-                  const start = getArrowPoint(move.from);
-                  const end = getArrowPoint(move.to);
-
-                  return (
-                    <line
-                      key={`${move.from}-${move.to}-${index}`}
-                      x1={start.x}
-                      y1={start.y}
-                      x2={end.x}
-                      y2={end.y}
-                      className="board-arrow-line"
-                      markerEnd="url(#first-move-arrow-head)"
-                    />
-                  );
-                })}
-              </svg>
             )}
           </div>
 
