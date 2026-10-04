@@ -220,14 +220,14 @@ addEvaluationNodes("root");
       let score = null;
 
       const cpMatch =
-        message.match(/score cp (-?\\d+)/);
+        message.match(/score cp (-?\d+)/);
 
       if (cpMatch) {
         score =
           parseInt(cpMatch[1], 10) / 100;
       } else {
         const mateMatch =
-          message.match(/score mate (-?\\d+)/);
+          message.match(/score mate (-?\d+)/);
 
         if (mateMatch) {
           const mateIn =
