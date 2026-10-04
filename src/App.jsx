@@ -414,14 +414,108 @@ function handlePGNImport(event) {
     const pgn = String(reader.result || "");
 
     try {
-      const testGame = new Chess();
+      // ============================================
+      // LOAD PGN
+      // ============================================
 
-      testGame.loadPgn(pgn);
+      const pgnGame = new Chess();
 
-      console.log("PGN loaded successfully:", pgn);
+      pgnGame.loadPgn(pgn);
 
-      // Temporary test
-      alert("PGN loaded successfully!");
+      // Get all moves from the PGN
+      const moves = pgnGame.history({
+        verbose: true,
+      });
+
+      if (moves.length === 0) {
+        throw new Error("No moves found in PGN.");
+      }
+
+      // ============================================
+      // REBUILD OUR MOVE TREE
+      // ============================================
+
+      const replayGame = new Chess();
+
+      const newTree = {
+        root: {
+          id: "root",
+          parentId: null,
+          fen: replayGame.fen(),
+          move: null,
+          children: [],
+        },
+      };
+
+      let parentId = "root";
+
+      moves.forEach((move, index) => {
+        // Play the move to get the resulting FEN
+        const playedMove = replayGame.move({
+          from: move.from,
+          to: move.to,
+          promotion: move.promotion,
+        });
+
+        const nodeId = `pgn-${Date.now()}-${index}`;
+
+        const node = {
+          id: nodeId,
+          parentId: parentId,
+          fen: replayGame.fen(),
+
+          move: {
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion,
+            san: playedMove.san,
+            color: move.color,
+            moveNumber:
+              move.color === "w"
+                ? Math.ceil((index + 1) / 2)
+                : Math.ceil((index + 1) / 2),
+          },
+
+          children: [],
+
+          evaluationBefore: null,
+          evaluationAfter: null,
+          loss: null,
+          classification: null,
+          analyzing: false,
+        };
+
+        newTree[nodeId] = node;
+
+        newTree[parentId].children = [
+          ...newTree[parentId].children,
+          nodeId,
+        ];
+
+        parentId = nodeId;
+      });
+
+      // ============================================
+      // UPDATE APP
+      // ============================================
+
+      setTree(newTree);
+
+      // Show the final position
+      setCurrentNodeId(parentId);
+
+      // Clear undo / redo history
+      setUndoStack([]);
+      setRedoStack([]);
+
+      setSelectedSquare(null);
+      setPromotion(null);
+
+      pendingMoveRef.current = null;
+
+      alert(
+        `PGN loaded successfully!\n\n${moves.length} moves imported.`
+      );
 
     } catch (error) {
       console.error("PGN loading error:", error);
@@ -434,7 +528,7 @@ function handlePGNImport(event) {
 
   reader.readAsText(file);
 
-  // Allow selecting the same file again
+  // Allow selecting the same PGN file again
   event.target.value = "";
 }
 // =====================================================
